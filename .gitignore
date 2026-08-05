@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+screenshots/*.png
+screenshots/*.html
+data/state.json
+data/simulation-state.json
+*.log
+npm-debug.log*
+coverage/
+*.tgz
+.DS_Store

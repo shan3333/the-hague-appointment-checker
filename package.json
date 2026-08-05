@@ -1,0 +1,58 @@
+{
+  "name": "the-hague-appointment-checker",
+  "version": "1.0.0",
+  "description": "A local Playwright checker for possible appointment availability in The Hague.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "appointment",
+    "availability",
+    "playwright",
+    "the-hague"
+  ],
+  "files": [
+    "dist/",
+    "src/",
+    ".env.example",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "cross-env APPOINTMENT_MODE=real HEADLESS=true tsx src/index.ts check",
+    "check:simulate": "cross-env APPOINTMENT_MODE=simulate-fixed tsx src/index.ts check",
+    "monitor:real": "cross-env APPOINTMENT_MODE=real HEADLESS=true tsx src/index.ts monitor",
+    "monitor:simulate": "cross-env APPOINTMENT_MODE=simulate-timeline HEADLESS=false tsx src/index.ts monitor",
+    "debug": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
+    "debug:slow": "cross-env APPOINTMENT_MODE=real DEBUG_SLOW_MODE=true HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test-notification": "tsx src/test-notification.ts",
+    "reset-state": "tsx src/reset-state.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "luxon": "^3.7.1",
+    "node-notifier": "^10.0.1",
+    "playwright": "^1.54.2"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.6.2",
+    "@types/node": "^24.1.0",
+    "@types/node-notifier": "^8.0.5",
+    "cross-env": "^10.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

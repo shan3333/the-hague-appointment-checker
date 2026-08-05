@@ -1,0 +1,38 @@
+name: Bug report
+description: Report an application defect or appointment-page selector change
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach personal appointment data, `.env`, or unreviewed screenshots.
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and Node.js version
+      placeholder: macOS 15, Node.js 22
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - real
+        - simulate-fixed
+        - simulate-timeline
+        - notification test
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include sanitized logs and reproduction steps.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification already attempted
+      placeholder: npm run typecheck; npm test; npm run debug
