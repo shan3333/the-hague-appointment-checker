@@ -76,6 +76,7 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run monitor:simulate` | Headed local timeline simulation using `SIMULATION_SEQUENCE` |
 | `npm run debug` | One visible real check with debug screenshot and rendered HTML |
 | `npm run debug:slow` | One visible, slowed real check that remains open temporarily |
+| `npm run help` | Print CLI commands without checking the website |
 | `npm run test-notification` | Test only the platform notification provider |
 | `npm run reset-state` | Reset appointment state and the timeline index |
 | `npm run typecheck` | Validate TypeScript without emitting files |

@@ -29,6 +29,7 @@
     "monitor:simulate": "cross-env APPOINTMENT_MODE=simulate-timeline HEADLESS=false tsx src/index.ts monitor",
     "debug": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
     "debug:slow": "cross-env APPOINTMENT_MODE=real DEBUG_SLOW_MODE=true HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
+    "help": "tsx src/help.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",

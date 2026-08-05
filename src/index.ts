@@ -129,6 +129,6 @@ else if (action === "monitor") {
     : config.simulationIntervalSeconds * 1_000;
   await runMonitor(performCheck, config, intervalMs, message => logger.info(message));
 } else {
-  console.error("Usage: npm run check | npm run monitor | npm run monitor:real | npm run monitor:simulate | npm run debug");
+  console.error("Unknown command. Run npm run help for available commands.");
   process.exitCode = 2;
 }

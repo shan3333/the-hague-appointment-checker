@@ -1,0 +1,57 @@
+name: Windows compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      APPOINTMENT_MODE: real
+      HEADLESS: "true"
+      ENABLE_DESKTOP_NOTIFICATION: "false"
+      ENABLE_SOUND: "false"
+      ENABLE_OPEN_BROWSER: "false"
+      ENABLE_SCREENSHOT: "false"
+      DEBUG_SCREENSHOTS: "false"
+      SAVE_LOAD_ERROR_SCREENSHOT: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: npx playwright install chromium
+
+      - name: Type-check
+        shell: pwsh
+        run: npm run typecheck
+
+      - name: Run tests
+        shell: pwsh
+        run: npm test
+
+      - name: Build
+        shell: pwsh
+        run: npm run build
+
+      - name: CLI help smoke test
+        shell: pwsh
+        run: npm run help
