@@ -20,6 +20,7 @@ function providers(): NotificationProviderSet {
 const draft = {
   title: "Title",
   message: "Message",
+  isSimulation: false,
   url: "https://example.test",
   timestamp: "2026-08-06T15:20:00.000Z",
   metadata: { earliestMatchingDate: "2026-08-10", matchingAppointmentCount: 2 }
@@ -99,6 +100,7 @@ describe("MacNotifier", () => {
     await provider.notify({
       title: 'Title "quoted"',
       message: 'Line one\nMessage "quoted"',
+      isSimulation: false,
       timestamp: "2026-08-06T15:20:00.000Z",
       metadata: {}
     });

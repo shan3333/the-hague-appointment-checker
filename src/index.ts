@@ -170,9 +170,15 @@ async function performCheck(): Promise<void> {
       const matchingDetails = evaluation.matchingDates[0]
         ? ` Earliest matching appointment: ${evaluation.matchingDates[0]}. Filter: ${describeDateFilter(dateFilter)}.`
         : "";
+      const isSimulation = runtimeMode.kind === "simulation";
       const dispatch = await notificationService.notify({
-        title: "The Hague Appointment Checker",
-        message: `A possible appointment is available.${matchingDetails} Open the website now.`,
+        title: isSimulation
+          ? "🧪 Simulation: The Hague Appointment Available"
+          : "The Hague Appointment Checker",
+        message: isSimulation
+          ? `This is a simulated appointment notification. No real appointment website was checked. No booking was attempted. A possible appointment is available.${matchingDetails} Booking URL is included for reference only.`
+          : `A possible appointment is available.${matchingDetails} Open the website now.`,
+        isSimulation,
         url: config.url,
         timestamp: now,
         metadata: {

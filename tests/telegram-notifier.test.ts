@@ -5,6 +5,7 @@ import type { Notification } from "../src/notifications/Notification.js";
 const notification: Notification = {
   title: "The Hague appointment available",
   message: "A selectable appointment was detected.",
+  isSimulation: false,
   url: "https://denhaag.mijnafspraakmaken.nl/?product=35",
   timestamp: "2026-08-06T15:20:00.000Z",
   metadata: {
@@ -31,6 +32,30 @@ describe("TelegramNotifier", () => {
     expect(body.chat_id).toBe("chat-id");
     expect(body.text).toBe(formatTelegramMessage(notification));
     expect(body.text).toContain("2026-08-06 17:20 Europe/Amsterdam");
+  });
+
+  it("clearly labels simulated notifications and keeps appointment details", () => {
+    const message = formatTelegramMessage({
+      ...notification,
+      title: "🧪 Simulation: The Hague Appointment Available",
+      message: "This is a simulated appointment notification. No real appointment website was checked. No booking was attempted.",
+      isSimulation: true
+    });
+    expect(message).toContain("🧪 SIMULATION");
+    expect(message).toContain("This is a simulated appointment notification.");
+    expect(message).toContain("No real appointment website was checked.");
+    expect(message).toContain("No booking was attempted.");
+    expect(message).toContain("Earliest matching appointment\n2026-08-10");
+    expect(message).toContain("Filter\nbetween 2026-08-10 and 2026-08-20");
+    expect(message).toContain("Booking URL (for reference only)\nhttps://denhaag.mijnafspraakmaken.nl/?product=35");
+  });
+
+  it("keeps real notification wording unchanged", () => {
+    const message = formatTelegramMessage(notification);
+    expect(message).toContain("🎉 The Hague appointment available");
+    expect(message).toContain("Open booking page\nhttps://denhaag.mijnafspraakmaken.nl/?product=35");
+    expect(message).not.toContain("SIMULATION");
+    expect(message).not.toContain("reference only");
   });
 
   it("reports an HTTP error without exposing the token", async () => {

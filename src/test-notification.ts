@@ -15,8 +15,9 @@ console.log(`Desktop enabled: ${config.enableDesktopNotification}`);
 console.log(`Telegram enabled: ${config.telegram.enabled}`);
 
 const result = await service.notify({
-  title: "The Hague Appointment Checker — test",
-  message: "This is a test notification. No appointment website was checked.",
+  title: "🧪 Simulation: The Hague Appointment Available",
+  message: "This is a simulated appointment notification. No real appointment website was checked. No booking was attempted. This is a notification-system test. Booking URL is included for reference only.",
+  isSimulation: true,
   url: config.url,
   metadata: { timezone: config.timezone, test: true }
 });

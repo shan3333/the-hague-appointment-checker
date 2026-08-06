@@ -6,6 +6,7 @@ describe("Notification model", () => {
     const notification = createNotification({
       title: "Appointment available",
       message: "Open the booking page.",
+      isSimulation: true,
       url: "https://example.test",
       timestamp: new Date("2026-08-06T15:20:00.000Z"),
       metadata: { matchingAppointmentCount: 2 }
@@ -13,6 +14,7 @@ describe("Notification model", () => {
     expect(notification).toEqual({
       title: "Appointment available",
       message: "Open the booking page.",
+      isSimulation: true,
       url: "https://example.test",
       timestamp: "2026-08-06T15:20:00.000Z",
       metadata: { matchingAppointmentCount: 2 }

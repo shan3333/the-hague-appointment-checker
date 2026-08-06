@@ -20,14 +20,17 @@ function formatDetectedAt(notification: Notification): string {
 }
 
 export function formatTelegramMessage(notification: Notification): string {
-  const lines = [`🎉 ${notification.title}`, "", notification.message];
+  const heading = notification.isSimulation ? "🧪 SIMULATION" : `🎉 ${notification.title}`;
+  const lines = [heading, "", notification.message];
   const earliest = notification.metadata.earliestMatchingDate;
   const count = notification.metadata.matchingAppointmentCount;
   const filter = notification.metadata.filter;
   if (typeof earliest === "string" && earliest) lines.push("", "Earliest matching appointment", earliest);
   if (typeof count === "number") lines.push("", "Matching appointments", String(count));
   if (typeof filter === "string" && filter) lines.push("", "Filter", filter);
-  if (notification.url) lines.push("", "Open booking page", notification.url);
+  if (notification.url) {
+    lines.push("", notification.isSimulation ? "Booking URL (for reference only)" : "Open booking page", notification.url);
+  }
   lines.push("", "Detected", formatDetectedAt(notification));
   return lines.join("\n");
 }
