@@ -1,0 +1,13 @@
+{
+  "initials": "YOUR_INITIALS",
+  "firstName": "YOUR_FIRST_NAME",
+  "namePrefix": "",
+  "lastName": "YOUR_LAST_NAME",
+  "street": "YOUR_STREET",
+  "houseNumber": "YOUR_HOUSE_NUMBER",
+  "houseNumberAddition": "",
+  "city": "YOUR_CITY",
+  "email": "you@example.invalid",
+  "birthDate": "DD-MM-YYYY",
+  "mobilePhone": "YOUR_MOBILE_NUMBER"
+}
