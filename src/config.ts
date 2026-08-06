@@ -2,6 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import type { NotificationProviderSetting } from "./notifications/NotificationProvider.js";
 import { parseDateOnly } from "./dateFilter.js";
+import { parseTelegramConfig } from "./notifications/TelegramConfig.js";
 
 if (process.env.SIMULATION_MODE !== undefined) {
   throw new Error("SIMULATION_MODE was removed; use APPOINTMENT_MODE=simulate-timeline instead");
@@ -99,6 +100,7 @@ export const config = {
   enableDesktopNotification: boolean("ENABLE_DESKTOP_NOTIFICATION", true),
   enableSound: boolean("ENABLE_SOUND", true),
   notificationProvider,
+  telegram: parseTelegramConfig(process.env),
   enableOpenBrowser: boolean("ENABLE_OPEN_BROWSER", true),
   enableScreenshot: boolean("ENABLE_SCREENSHOT", true),
   debugScreenshots: boolean("DEBUG_SCREENSHOTS", false),

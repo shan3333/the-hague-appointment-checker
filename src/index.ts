@@ -148,10 +148,10 @@ async function performCheck(): Promise<void> {
     console.log(`Range: ${range.start} through ${range.end ?? "unbounded"}`);
   }
   const availabilityEvent = shouldNotify(effectiveStatus);
-  const notificationEnabled = config.enableDesktopNotification;
+  const notificationEnabled = config.enableDesktopNotification || config.telegram.enabled;
   let notificationAttempted = false;
   let notificationResult: "success" | "failure" | "not attempted" = "not attempted";
-  let desktopNotificationSent = false;
+  let notificationSent = false;
   if (availabilityEvent) {
     console.log("\n*** POSSIBLE APPOINTMENT AVAILABLE — OPEN THE WEBSITE NOW ***\n");
     logger.info("Appointment availability detected; running enabled alert actions");
@@ -159,26 +159,33 @@ async function performCheck(): Promise<void> {
       if (result.screenshotPath) logger.info("Availability screenshot saved", { path: result.screenshotPath });
       else logger.error("Availability screenshot was not saved");
     }
-    if (config.enableDesktopNotification) {
+    if (notificationEnabled) {
       notificationAttempted = true;
-      try {
-        const notificationService = new NotificationService({
-          provider: config.notificationProvider,
-          enableSound: config.enableSound
-        });
-        const matchingDetails = evaluation.matchingDates[0]
-          ? ` Earliest matching appointment: ${evaluation.matchingDates[0]}. Filter: ${describeDateFilter(dateFilter)}.`
-          : "";
-        await notificationService.notify(
-          "The Hague Appointment Checker",
-          `A possible appointment is available.${matchingDetails} Open the website now.`
-        );
-        desktopNotificationSent = true;
-        notificationResult = "success";
-        logger.info("Desktop notification sent", { provider: notificationService.providerName });
-      } catch (error) {
-        notificationResult = "failure";
-        logger.error("Desktop notification failure", { error: String(error) });
+      const notificationService = new NotificationService({
+        provider: config.notificationProvider,
+        enableSound: config.enableSound,
+        desktopEnabled: config.enableDesktopNotification,
+        telegram: config.telegram
+      });
+      const matchingDetails = evaluation.matchingDates[0]
+        ? ` Earliest matching appointment: ${evaluation.matchingDates[0]}. Filter: ${describeDateFilter(dateFilter)}.`
+        : "";
+      const dispatch = await notificationService.notify({
+        title: "The Hague Appointment Checker",
+        message: `A possible appointment is available.${matchingDetails} Open the website now.`,
+        url: config.url,
+        timestamp: now,
+        metadata: {
+          ...(evaluation.matchingDates[0] ? { earliestMatchingDate: evaluation.matchingDates[0] } : {}),
+          matchingAppointmentCount: evaluation.matchingDates.length,
+          filter: describeDateFilter(dateFilter),
+          timezone: config.timezone
+        }
+      });
+      notificationSent = dispatch.deliveries.some(delivery => delivery.success);
+      notificationResult = dispatch.deliveries.every(delivery => delivery.success) ? "success" : "failure";
+      for (const delivery of dispatch.deliveries.filter(delivery => delivery.success)) {
+        logger.info(`${delivery.channel} notification sent`, { provider: delivery.provider });
       }
     }
     if (config.enableOpenBrowser) {
@@ -193,11 +200,12 @@ async function performCheck(): Promise<void> {
   logger.info(`Previous status: ${previous.lastDefinitiveStatus ?? "NONE"}`);
   logger.info(`Current status: ${effectiveStatus}`);
   logger.info(`Appointment available: ${availabilityEvent}`);
-  logger.info(`Notification enabled: ${notificationEnabled}`);
+  logger.info(`Desktop notification enabled: ${config.enableDesktopNotification}`);
+  logger.info(`Telegram notification enabled: ${config.telegram.enabled}`);
   logger.info(`Notification attempted: ${notificationAttempted}`);
   logger.info(`Notification result: ${notificationResult}`);
   logger.info(`Matching appointment dates changed: ${matchingDatesChanged(previous, evaluation.matchingDates)}`);
-  await saveState(config.statePath, nextState(previous, effectiveStatus, now, desktopNotificationSent, {
+  await saveState(config.statePath, nextState(previous, effectiveStatus, now, notificationSent, {
     rawStatus,
     availableDates: evaluation.availableDates,
     matchingDates: evaluation.matchingDates

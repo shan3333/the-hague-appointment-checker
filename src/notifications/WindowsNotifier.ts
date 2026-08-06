@@ -1,5 +1,6 @@
 import notifier from "node-notifier";
 import type { NotificationProvider } from "./NotificationProvider.js";
+import type { Notification } from "./Notification.js";
 
 export interface NodeNotifierLike {
   notify(
@@ -9,12 +10,14 @@ export interface NodeNotifierLike {
 }
 
 export class WindowsNotifier implements NotificationProvider {
+  readonly name = "desktop";
   constructor(
     private readonly enableSound = true,
     private readonly client: NodeNotifierLike = notifier
   ) {}
 
-  async notify(title: string, message: string): Promise<void> {
+  async notify(notification: Notification): Promise<void> {
+    const { title, message } = notification;
     await new Promise<void>((resolve, reject) => {
       this.client.notify(
         { title, message, sound: this.enableSound, wait: false },

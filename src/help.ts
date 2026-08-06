@@ -7,7 +7,7 @@ Usage:
   npm run monitor:simulate   Run the local timeline simulator
   npm run debug              Visible one-shot inspection at normal speed
   npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open
-  npm run test-notification  Test desktop notifications only
+  npm run test-notification  Test enabled desktop and Telegram notifications
   npm run reset-state        Reset appointment and simulation state
   npm run typecheck          Validate TypeScript
   npm test                   Run unit tests
