@@ -10,12 +10,16 @@ export interface SimulationView {
   screenshotWouldBeTaken: boolean;
   timestamp: string;
   countdownSeconds: number;
+  availableDates?: string[];
+  matchingDates?: string[];
+  activeFilter?: string;
 }
 
 export async function renderSimulation(
   page: Page,
   status: SimulatedStatus,
-  view?: SimulationView
+  view?: SimulationView,
+  appointmentDates: readonly string[] = []
 ): Promise<void> {
   const available = status === "AVAILABLE";
   const details: SimulationView = view ?? {
@@ -53,7 +57,7 @@ export async function renderSimulation(
         <main>
           <div class="app-title" role="heading" aria-level="1">The Hague Appointment Checker</div>
           <p>Local timeline simulation — the municipality website is not contacted.</p>
-          <div class="status ${available ? "available" : "not-available"}">${details.currentStatus}</div>
+          <div class="status ${details.currentStatus === "AVAILABLE" ? "available" : "not-available"}">${details.currentStatus}</div>
           <dl>
             <dt>Current cycle</dt><dd>#${details.cycleNumber}</dd>
             <dt>Previous status</dt><dd>${details.previousStatus ?? "NONE"}</dd>
@@ -62,6 +66,9 @@ export async function renderSimulation(
             <dt>Browser would be opened</dt><dd>${yesNo(details.browserWouldOpen)}</dd>
             <dt>Screenshot would be taken</dt><dd>${yesNo(details.screenshotWouldBeTaken)}</dd>
             <dt>Current timestamp</dt><dd>${details.timestamp}</dd>
+            <dt>Simulated appointment dates</dt><dd>${(details.availableDates ?? appointmentDates).join(", ") || "NONE"}</dd>
+            <dt>Active filter</dt><dd>${details.activeFilter ?? "NONE"}</dd>
+            <dt>Matching dates</dt><dd>${details.matchingDates?.join(", ") || "NONE"}</dd>
           </dl>
           <div class="countdown">Next cycle in <strong id="countdown">${details.countdownSeconds}</strong> second(s)</div>
           <div class="detector" aria-hidden="true">
@@ -70,7 +77,9 @@ export async function renderSimulation(
             <input id="date-select" placeholder="Kies een datum">
             <div role="dialog" aria-label="Kies een datum">
               ${available
-                ? '<button class="duet-date__day" aria-disabled="false">10 augustus</button>'
+                ? (appointmentDates.length > 0
+                  ? appointmentDates.map(date => `<button class="duet-date__day" data-date="${date}" aria-disabled="false">${date}</button>`).join("")
+                  : '<button class="duet-date__day" aria-disabled="false">Gesimuleerde datum</button>')
                 : '<button class="duet-date__day" aria-disabled="true" disabled>10 augustus</button>'}
             </div>
             <p id="days-available-message">

@@ -9,6 +9,8 @@ import type { CheckResult, DomSignals } from "./types.js";
 import { renderSimulation } from "./simulation/renderSimulation.js";
 import type { SimulatedStatus } from "./simulation/TimelineSimulator.js";
 import type { SimulationView } from "./simulation/renderSimulation.js";
+import { closeBrowserCleanly } from "./browserLifecycle.js";
+import { captureCheckArtifacts } from "./artifactCapture.js";
 import { createInterface } from "node:readline/promises";
 
 export const SELECTORS = {
@@ -61,7 +63,7 @@ async function reachCalendar(page: Page): Promise<void> {
 
 export async function extractSignals(page: Page): Promise<DomSignals> {
   // A string avoids build-tool helper injection into Playwright's isolated page context.
-  return page.evaluate<DomSignals>(`(() => {
+  return page.evaluate<DomSignals>(String.raw`(() => {
     const visible = element => !!element && !!element.offsetParent;
     const text = selector => {
       const element = document.querySelector(selector);
@@ -69,6 +71,32 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
     };
     const dates = Array.from(document.querySelectorAll(${JSON.stringify(SELECTORS.availableDate)}))
       .filter(button => visible(button) && !button.disabled && button.getAttribute('aria-disabled') === 'false');
+    const monthNumbers = {
+      januari: '01', februari: '02', maart: '03', april: '04', mei: '05', juni: '06',
+      juli: '07', augustus: '08', september: '09', oktober: '10', november: '11', december: '12'
+    };
+    const normalizeDate = (raw, fallbackYear) => {
+      const value = (raw || '').trim().toLowerCase();
+      let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (match) return value;
+      match = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(value);
+      if (match) return match[3] + '-' + match[2].padStart(2, '0') + '-' + match[1].padStart(2, '0');
+      match = /(?:\w+,\s*)?(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?/.exec(value);
+      if (!match || !monthNumbers[match[2]] || !(match[3] || fallbackYear)) return '';
+      return (match[3] || fallbackYear) + '-' + monthNumbers[match[2]] + '-' + match[1].padStart(2, '0');
+    };
+    const headerText = (document.querySelector('.duet-date__select-label') || {}).textContent || '';
+    const displayedYear = (/\b(\d{4})\b/.exec(headerText) || [])[1] || '';
+    const selectedInput = document.querySelector(${JSON.stringify(SELECTORS.calendarInput)});
+    const selectedAccessibleText = (document.querySelector('#selected-date-sr-only') || {}).textContent || '';
+    const appointmentDates = [
+      normalizeDate(selectedInput && selectedInput.value, displayedYear),
+      normalizeDate(selectedAccessibleText, displayedYear),
+      ...dates.map(button => normalizeDate(
+        button.getAttribute('data-date') || button.value || button.textContent || '',
+        displayedYear
+      ))
+    ].filter(Boolean).filter((value, index, all) => all.indexOf(value) === index).sort();
     const time = document.querySelector(${JSON.stringify(SELECTORS.timeSelect)});
     const times = time && visible(time) && !time.disabled
       ? Array.from(time.options).filter(option =>
@@ -86,6 +114,7 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
       noAppointmentsText: text(${JSON.stringify(SELECTORS.noAppointments)}),
       enabledDateCount: dates.length,
       availableTimeCount: times,
+      appointmentDates,
       errorText: text(${JSON.stringify(SELECTORS.error)})
     };
   })()`);
@@ -93,7 +122,9 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
 
 export interface CheckOptions {
   captureAvailabilityScreenshot?: boolean;
+  shouldCaptureAvailabilityScreenshot?: (appointmentDates: readonly string[]) => boolean;
   simulatedStatus?: SimulatedStatus;
+  simulatedAppointmentDates?: string[];
   simulationView?: SimulationView;
   keepBrowserOpenMs?: number;
   pauseBeforeClose?: boolean;
@@ -130,7 +161,7 @@ export async function checkOnce(options: CheckOptions = {}): Promise<CheckResult
       lastPage = page;
       if (options.simulatedStatus) {
         logger.info(`Simulation mode enabled: ${options.simulatedStatus}`);
-        await renderSimulation(page, options.simulatedStatus, options.simulationView);
+        await renderSimulation(page, options.simulatedStatus, options.simulationView, options.simulatedAppointmentDates);
         logger.info("Simulated calendar loaded");
       } else {
         await reachCalendar(page);
@@ -140,14 +171,19 @@ export async function checkOnce(options: CheckOptions = {}): Promise<CheckResult
       const signals = await extractSignals(page);
       const status = classifyAppointmentStatus(signals);
       if (config.debugSlowMode) logger.info(`Status detected: ${status}`);
-      const result: CheckResult = { status, reason: reasonFor(signals), signals };
-      if (status === "AVAILABLE" && options.captureAvailabilityScreenshot) {
-        result.screenshotPath = await saveArtifacts(page, "appointment-found").catch(error => {
-          logger.error("Screenshot failure", { error: String(error) });
-          return undefined;
-        });
-      }
-      if (config.debugScreenshots) await saveArtifacts(page, "debug", true).catch(error => logger.error("Debug artifact failure", { error: String(error) }));
+      const result: CheckResult = { status, reason: reasonFor(signals), signals, appointmentDates: signals.appointmentDates };
+      const screenshotMatches = options.shouldCaptureAvailabilityScreenshot?.(signals.appointmentDates) ?? true;
+      const artifacts = await captureCheckArtifacts({
+        status,
+        screenshotMatches,
+        debugArtifactsEnabled: config.debugScreenshots,
+        availabilityScreenshotRequested: options.captureAvailabilityScreenshot ?? false
+      }, async (prefix, includeHtml) => saveArtifacts(page, prefix, includeHtml).catch(error => {
+        logger.error(prefix === "debug" ? "Debug artifact failure" : "Screenshot failure", { error: String(error) });
+        return undefined;
+      }));
+      result.screenshotPath = artifacts.screenshotPath;
+      if (artifacts.debugArtifactPath) logger.info("Debug screenshot and rendered HTML saved", { path: artifacts.debugArtifactPath });
       if (status === "PAGE_NOT_LOADED" || status === "ERROR") {
         lastDetectedFailure = result;
         throw new Error(result.reason);
@@ -156,19 +192,15 @@ export async function checkOnce(options: CheckOptions = {}): Promise<CheckResult
     }, config.maxRetries, config.retryBackoffMs, undefined, (error, attempt) => logger.warn(`Check failed; retrying (attempt ${attempt})`, { error: String(error) }));
   } catch (error) {
     if (lastPage && config.saveLoadErrorScreenshot) await saveArtifacts(lastPage, "load-error").catch(screenshotError => logger.error("Load-error screenshot failure", { error: String(screenshotError) }));
-    return lastDetectedFailure ?? { status: "PAGE_NOT_LOADED", reason: String(error) };
+    return lastDetectedFailure ?? { status: "PAGE_NOT_LOADED", reason: String(error), appointmentDates: [] };
   } finally {
-    const keepBrowserOpenMs = options.keepBrowserOpenMs ?? 0;
-    if (browser && (keepBrowserOpenMs > 0 || options.pauseBeforeClose)) {
-      const timedWait = keepBrowserOpenMs > 0
-        ? new Promise<void>(resolve => {
-            logger.info("Waiting before browser closes", { milliseconds: keepBrowserOpenMs });
-            setTimeout(resolve, keepBrowserOpenMs);
-          })
-        : Promise.resolve();
-      const enterWait = options.pauseBeforeClose ? waitForEnter() : Promise.resolve();
-      await Promise.all([timedWait, enterWait]);
-    }
-    await browser?.close().catch(error => logger.error("Browser close failure", { error: String(error) }));
+    await closeBrowserCleanly(browser, {
+      keepOpenMs: options.keepBrowserOpenMs ?? 0,
+      pauseBeforeClose: options.pauseBeforeClose
+    }, {
+      waitForEnter,
+      logWait: milliseconds => logger.info("Waiting before browser closes", { milliseconds }),
+      logCloseError: error => logger.error("Browser close failure", { error: String(error) })
+    });
   }
 }

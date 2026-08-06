@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveRuntimeMode, runModeCheck } from "../src/mode.js";
+import { printModeBanner, resolveRuntimeMode, runModeCheck } from "../src/mode.js";
 import type { CheckResult } from "../src/types.js";
 
 const realResult: CheckResult = { status: "NOT_AVAILABLE", reason: "real" };
@@ -49,5 +49,60 @@ describe("runtime mode isolation", () => {
 
   it("requires an authoritative mode", () => {
     expect(() => resolveRuntimeMode({ simulationSequence: [] })).toThrow(/APPOINTMENT_MODE is required/);
+  });
+
+  it("fixed simulation runs exactly once per invocation", async () => {
+    const real = vi.fn().mockResolvedValue(realResult);
+    const simulated = vi.fn().mockResolvedValue(simulatedResult);
+    const mode = resolveRuntimeMode({
+      appointmentMode: "simulate-fixed",
+      simulateStatus: "AVAILABLE",
+      simulationSequence: []
+    });
+    expect(mode.kind).toBe("simulation");
+    await runModeCheck(mode, "AVAILABLE", { real, simulated });
+    expect(simulated).toHaveBeenCalledTimes(1);
+    expect(simulated).toHaveBeenCalledWith("AVAILABLE");
+  });
+
+  it("omits the check interval for one-time debug banners", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    printModeBanner({ kind: "real" }, "https://example.test", {
+      checkIntervalMinutes: 5,
+      simulationIntervalSeconds: 5,
+      simulationRepeat: true,
+      simulationPauseBeforeClose: false,
+      simulationKeepBrowserOpenMs: 30_000
+    }, {
+      runType: "one-time check",
+      browser: "visible",
+      debugMode: "slow",
+      debugScreenshots: true,
+      keepBrowserOpenMs: 15_000
+    });
+    const output = log.mock.calls.flat().join("\n");
+    expect(output).toContain("Debug mode: slow");
+    expect(output).toContain("Keep browser open: 15000 ms");
+    expect(output).not.toContain("Check interval");
+    log.mockRestore();
+  });
+
+  it("shows the check interval only for real monitors", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    printModeBanner({ kind: "real" }, "https://example.test", {
+      checkIntervalMinutes: 5,
+      simulationIntervalSeconds: 5,
+      simulationRepeat: true,
+      simulationPauseBeforeClose: false,
+      simulationKeepBrowserOpenMs: 30_000
+    }, {
+      runType: "monitor",
+      browser: "headless",
+      debugMode: "off",
+      debugScreenshots: false,
+      keepBrowserOpenMs: 0
+    });
+    expect(log.mock.calls.flat().join("\n")).toContain("Check interval: 5 minute(s)");
+    log.mockRestore();
   });
 });

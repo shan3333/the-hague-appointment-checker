@@ -74,8 +74,8 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run check:simulate` | One fixed simulated check using `SIMULATE_STATUS` |
 | `npm run monitor:real` | Repeated headless real checks inside the configured schedule |
 | `npm run monitor:simulate` | Headed local timeline simulation using `SIMULATION_SEQUENCE` |
-| `npm run debug` | One visible real check with debug screenshot and rendered HTML |
-| `npm run debug:slow` | One visible, slowed real check that remains open temporarily |
+| `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
+| `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run help` | Print CLI commands without checking the website |
 | `npm run test-notification` | Test only the platform notification provider |
 | `npm run reset-state` | Reset appointment state and the timeline index |
@@ -84,6 +84,54 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run build` | Compile production JavaScript into `dist/` |
 
 Stop either monitor with `Ctrl+C`.
+
+## Appointment date filters
+
+Existing check, monitor, and debug commands accept one optional date filter. npm
+requires the `--` separator before arguments forwarded to the checker:
+
+```bash
+npm run check -- --within 7d
+npm run check -- --within 2w
+npm run check -- --within 1m
+npm run check -- --before 2026-09-01
+npm run check -- --between 2026-08-15 2026-09-01
+npm run monitor:real -- --within 30d
+npm run monitor:real -- --between 2026-08-15 2026-09-01
+npm run monitor:simulate -- --between 2026-08-15 2026-09-01
+```
+
+The same syntax works with `check:simulate`, `monitor:simulate`, `debug`, and
+`debug:slow`. PowerShell uses the same npm syntax.
+
+- `d` means calendar days, `w` means seven-day calendar weeks, and `m` means
+  calendar months.
+- `--within`, `--before`, and no-filter ranges start today in `MONITOR_TIMEZONE`; `--between` uses its explicit start. Boundaries are inclusive, and past appointments are always ignored.
+- `--within 7d` includes today through today plus seven calendar days.
+- `--before 2026-09-01` includes appointments on 1 September.
+- `--between 2026-08-15 2026-09-01` uses strict `YYYY-MM-DD` dates and includes both the start and end dates.
+- Calendar-month arithmetic clamps at month end: 31 January plus one month is
+  28 February, or 29 February in a leap year.
+- Dates before today are ignored.
+- Without a filter, any parsed future appointment is accepted. Legacy availability
+  without a parseable date remains accepted for backward compatibility.
+- Only one of `--within`, `--before`, or `--between` may be used. Invalid, missing, reversed, or impossible dates stop before Chromium launches.
+- npm requires the `--` argument separator shown above. Windows PowerShell uses the same command syntax.
+
+When a filter is active, alerts, browser opening, and availability state use only
+matching dates. Filtered and debug runs log all parsed, matching, and rejected
+dates. The current notification policy remains one notification on every completed
+cycle that has a matching appointment. One-shot `check`, `debug`, and `debug:slow`
+runs therefore also notify whenever they detect matching availability, even when
+the saved status and matching dates are unchanged.
+
+For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
+
+```bash
+npm run monitor:simulate -- --between 2026-08-15 2026-09-01
+```
+
+For example, `SIMULATION_DATE_SEQUENCE=-;2026-08-10;2026-08-20,2026-08-25;2026-09-10` moves from no dates, to before-range availability, to two matches, and finally to after-range availability.
 
 ## Configuration
 
@@ -124,6 +172,7 @@ npm run monitor:real
 
 ```dotenv
 SIMULATE_STATUS=AVAILABLE
+SIMULATE_APPOINTMENT_DATES=2026-08-10,2026-08-20
 ```
 
 ```bash
@@ -132,6 +181,8 @@ npm run check:simulate
 
 Use `NOT_AVAILABLE` to test the other definitive state. The simulated detector
 uses local HTML and does not derive status from the municipality website.
+With an active date filter, an AVAILABLE simulation without a simulated date is
+treated as having no matching appointment.
 
 ### Timeline simulation
 
@@ -141,6 +192,7 @@ SIMULATION_REPEAT=true
 SIMULATION_INTERVAL_SECONDS=5
 SIMULATION_KEEP_BROWSER_OPEN_MS=30000
 SIMULATION_PAUSE_BEFORE_CLOSE=false
+SIMULATION_DATE_SEQUENCE=2026-09-10;2026-08-10,2026-08-12;-
 ```
 
 ```bash
@@ -159,6 +211,10 @@ to `false` for a fully offline simulation.
 The dashboard remains open for `SIMULATION_KEEP_BROWSER_OPEN_MS`. With
 `SIMULATION_PAUSE_BEFORE_CLOSE=true`, an interactive run also waits for Enter.
 The sequence index is stored locally and `npm run reset-state` resets it.
+`SIMULATION_DATE_SEQUENCE` aligns date data with timeline checks: semicolons
+separate cycles, commas separate multiple dates in one cycle, and `-` means no
+dates. Existing status-only timelines still work. If the date sequence is absent,
+`SIMULATE_APPOINTMENT_DATES` is used as a fallback.
 
 ## Notifications and availability actions
 
@@ -259,9 +315,13 @@ For slower interaction:
 npm run debug:slow
 ```
 
-`DEBUG_STEP_DELAY_MS` controls Playwright `slowMo` and
-`DEBUG_KEEP_BROWSER_OPEN_MS` controls the one-off post-check wait. Debug runs save
-rendered HTML and full-page screenshots under `screenshots/`.
+Use `debug` for a normal-speed visible inspection that closes as soon as the
+check and artifact capture finish. Use `debug:slow` for slowed Playwright actions,
+verbose step logging, and a final `DEBUG_KEEP_BROWSER_OPEN_MS` viewing period.
+Both capture the debug screenshot and rendered HTML before Chromium cleanup.
+`DEBUG_STEP_DELAY_MS` controls slow-mode Playwright `slowMo`; it does not affect
+standard debug. `monitor:real` instead repeats checks using `CHECK_INTERVAL_MINUTES`.
+Debug artifacts are written under `screenshots/`.
 
 If the checker returns `PAGE_NOT_LOADED`:
 
@@ -283,10 +343,16 @@ enabled. It writes status JSON under `data/` and screenshots/debug HTML under
 from npm packages. Screenshots and HTML may contain page content; review them
 before sharing.
 
+State also stores the raw page status, parsed appointment dates, and matching
+dates for diagnostics. Older state files are merged with safe defaults. These
+fields do not suppress repeated notifications while matching availability remains.
+
 ## Known limitations
 
 - Availability is only a signal; a slot may disappear before you open the site.
 - Website changes can invalidate selectors or Dutch text contracts.
+- Date filtering can only evaluate dates exposed by the currently rendered
+  calendar or selected-date field; it does not crawl unlimited future months.
 - Desktop notifications depend on operating-system permissions and a graphical
   session.
 - macOS is the only notification implementation visually verified by the current

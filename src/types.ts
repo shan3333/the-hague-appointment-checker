@@ -7,6 +7,7 @@ export interface DomSignals {
   noAppointmentsText: string;
   enabledDateCount: number;
   availableTimeCount: number;
+  appointmentDates: string[];
   errorText: string;
 }
 
@@ -14,5 +15,6 @@ export interface CheckResult {
   status: AppointmentStatus;
   reason: string;
   signals?: DomSignals;
+  appointmentDates?: string[];
   screenshotPath?: string;
 }

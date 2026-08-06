@@ -5,10 +5,22 @@ Usage:
   npm run check:simulate     Run one fixed simulated check
   npm run monitor:real       Monitor the real website
   npm run monitor:simulate   Run the local timeline simulator
-  npm run debug              Run one visible real check
-  npm run debug:slow         Run one slowed visible real check
+  npm run debug              Visible one-shot inspection at normal speed
+  npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open
   npm run test-notification  Test desktop notifications only
   npm run reset-state        Reset appointment and simulation state
   npm run typecheck          Validate TypeScript
   npm test                   Run unit tests
   npm run build              Build production JavaScript`);
+
+console.log(`
+Appointment date filters (npm requires -- before forwarded options):
+  npm run check -- --within 7d
+  npm run check -- --before 2026-09-01
+  npm run check -- --between 2026-08-15 2026-09-01
+  npm run monitor:real -- --within 1m
+  npm run check:simulate -- --within 7d
+
+--between uses strict YYYY-MM-DD dates and includes both boundaries.
+Only one of --within, --before, or --between may be used.
+Supported --within units: d (days), w (weeks), m (calendar months).`);

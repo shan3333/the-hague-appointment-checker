@@ -7,13 +7,19 @@ export interface CheckerState {
   lastCheckStatus: AppointmentStatus | null;
   lastCheckedAt: string | null;
   lastNotifiedAt: string | null;
+  lastRawStatus: AppointmentStatus | null;
+  lastAvailableAppointmentDates: string[];
+  lastMatchingAppointmentDates: string[];
 }
 
 export const emptyState: CheckerState = {
   lastDefinitiveStatus: null,
   lastCheckStatus: null,
   lastCheckedAt: null,
-  lastNotifiedAt: null
+  lastNotifiedAt: null,
+  lastRawStatus: null,
+  lastAvailableAppointmentDates: [],
+  lastMatchingAppointmentDates: []
 };
 
 export async function loadState(file: string): Promise<CheckerState> {
@@ -36,11 +42,30 @@ export function shouldNotify(status: AppointmentStatus): boolean {
   return status === "AVAILABLE";
 }
 
-export function nextState(previous: CheckerState, status: AppointmentStatus, now: Date, notified: boolean): CheckerState {
+export function matchingDatesChanged(previous: CheckerState, current: readonly string[]): boolean {
+  return previous.lastMatchingAppointmentDates.join("|") !== [...current].sort().join("|");
+}
+
+export interface StateDateDetails {
+  rawStatus?: AppointmentStatus;
+  availableDates?: readonly string[];
+  matchingDates?: readonly string[];
+}
+
+export function nextState(
+  previous: CheckerState,
+  status: AppointmentStatus,
+  now: Date,
+  notified: boolean,
+  details: StateDateDetails = {}
+): CheckerState {
   return {
     lastDefinitiveStatus: status === "AVAILABLE" || status === "NOT_AVAILABLE" ? status : previous.lastDefinitiveStatus,
     lastCheckStatus: status,
     lastCheckedAt: now.toISOString(),
-    lastNotifiedAt: notified ? now.toISOString() : previous.lastNotifiedAt
+    lastNotifiedAt: notified ? now.toISOString() : previous.lastNotifiedAt,
+    lastRawStatus: details.rawStatus ?? status,
+    lastAvailableAppointmentDates: [...(details.availableDates ?? [])],
+    lastMatchingAppointmentDates: [...(details.matchingDates ?? [])]
   };
 }

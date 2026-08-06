@@ -1,5 +1,6 @@
 import type { CheckResult } from "./types.js";
 import type { SimulatedStatus } from "./simulation/TimelineSimulator.js";
+import type { CommandRuntimeOptions } from "./runtimeOptions.js";
 
 export type RuntimeMode =
   | { kind: "real" }
@@ -64,21 +65,35 @@ export async function runModeCheck(
 export function printModeBanner(
   mode: RuntimeMode,
   targetUrl: string,
-  configuration: ModeBannerConfiguration
+  configuration: ModeBannerConfiguration,
+  runtime: CommandRuntimeOptions
 ): void {
   console.log("========================================");
   if (mode.kind === "real") {
     console.log("MODE: REAL WEBSITE");
-    console.log(`Target: ${targetUrl}`);
-    console.log(`Check interval: ${configuration.checkIntervalMinutes} minute(s)`);
+    console.log(`Run type: ${runtime.runType}`);
+    if (runtime.runType === "monitor") {
+      console.log(`Check interval: ${configuration.checkIntervalMinutes} minute(s)`);
+    } else {
+      console.log(`Browser: ${runtime.browser}`);
+      if (runtime.debugMode !== "off") console.log(`Debug mode: ${runtime.debugMode}`);
+      if (runtime.debugMode === "slow") console.log(`Keep browser open: ${runtime.keepBrowserOpenMs} ms`);
+      console.log(`Debug screenshots: ${runtime.debugScreenshots ? "enabled" : "disabled"}`);
+    }
   } else {
     console.log("MODE: SIMULATION");
     console.log(`Type: ${mode.type}`);
+    console.log(`Run type: ${runtime.runType}`);
     console.log(`Sequence: ${mode.sequence.join(" -> ")}`);
-    console.log(`Simulation interval: ${configuration.simulationIntervalSeconds} second(s)`);
-    console.log(`Repeat: ${configuration.simulationRepeat}`);
-    console.log(`Pause before close: ${configuration.simulationPauseBeforeClose}`);
-    console.log(`Keep browser open: ${configuration.simulationKeepBrowserOpenMs} ms`);
+    if (runtime.browser === "visible") console.log("Browser: visible");
+    if (mode.type === "timeline") {
+      console.log(`Simulation interval: ${configuration.simulationIntervalSeconds} second(s)`);
+      console.log(`Repeat: ${configuration.simulationRepeat}`);
+      console.log(`Pause before close: ${configuration.simulationPauseBeforeClose}`);
+      console.log(`Keep browser open: ${runtime.keepBrowserOpenMs} ms`);
+    } else {
+      console.log(`Keep browser open: ${runtime.keepBrowserOpenMs} ms`);
+    }
   }
   console.log("========================================");
 }
