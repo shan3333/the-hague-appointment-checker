@@ -1,5 +1,8 @@
+import type { Notification } from "./Notification.js";
+
 export interface NotificationProvider {
-  notify(title: string, message: string): Promise<void>;
+  readonly name?: string;
+  notify(notification: Notification): Promise<void>;
 }
 
 export type NotificationProviderSetting =

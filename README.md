@@ -218,7 +218,7 @@ dates. Existing status-only timelines still work. If the date sequence is absent
 
 ## Notifications and availability actions
 
-While availability remains detected, the monitor sends one desktop notification
+While availability remains detected, the monitor sends notifications through every enabled channel
 on every check until the monitor is stopped or the appointment becomes
 unavailable. Consecutive `AVAILABLE` results therefore produce consecutive
 notifications. One-shot real and fixed-simulation checks also notify whenever the
@@ -229,6 +229,8 @@ These actions are independent:
 ```dotenv
 ENABLE_DESKTOP_NOTIFICATION=true
 ENABLE_SOUND=true
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ENABLE_OPEN_BROWSER=true
 ENABLE_SCREENSHOT=true
 NOTIFICATION_PROVIDER=auto
@@ -241,6 +243,38 @@ the appointment website:
 ```bash
 npm run test-notification
 ```
+
+### Telegram
+
+Telegram is optional and disabled by default. It is enabled automatically only
+when both Telegram values are present. If either value is missing, Telegram is
+not registered and desktop notifications continue independently. To enable phone
+notifications:
+
+1. Open Telegram and create a bot by messaging **@BotFather** and using `/newbot`.
+2. Send at least one message to the new bot from the Telegram account or group
+   that should receive alerts.
+3. Obtain the corresponding chat ID, for example by inspecting the bot's
+   `getUpdates` response after sending that message.
+4. Add the credentials only to your local `.env`:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+```
+
+Then run:
+
+```bash
+npm run test-notification
+```
+
+The test command does not contact the appointment website. When Telegram is
+enabled it tests Telegram and the independently enabled desktop channel. Telegram
+failures are logged without stopping monitoring or other notification methods.
+
+**Security:** never commit or paste your bot token into source files, screenshots,
+issues, or logs. `.env` is ignored by Git; `.env.example` contains empty values only.
 
 ### macOS
 
