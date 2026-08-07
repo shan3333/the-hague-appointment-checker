@@ -1,0 +1,33 @@
+[
+  {
+    "id": "simulation-customer-a",
+    "chatId": "-1009000000001",
+    "enabled": true,
+    "filter": {
+      "type": "before",
+      "date": "2026-09-01"
+    },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "simulation-customer-b",
+    "chatId": "-1009000000002",
+    "enabled": true,
+    "filter": {
+      "type": "between",
+      "start": "2026-09-01",
+      "end": "2026-09-30"
+    },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "simulation-customer-c",
+    "chatId": "-1009000000003",
+    "enabled": true,
+    "filter": {
+      "type": "before",
+      "date": "2026-08-10"
+    },
+    "expiresAt": "2026-09-07"
+  }
+]

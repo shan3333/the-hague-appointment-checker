@@ -7,6 +7,9 @@ screenshots/*.png
 screenshots/*.html
 data/state.json
 data/simulation-state.json
+data/customer-state.json
+config/customers.json
+config/customers.simulation.json
 *.log
 npm-debug.log*
 coverage/

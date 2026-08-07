@@ -2,6 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import type { NotificationProviderSetting } from "./notifications/NotificationProvider.js";
 import { parseDateOnly } from "./dateFilter.js";
+import { parseTelegramConfig } from "./notifications/TelegramConfig.js";
 
 if (process.env.SIMULATION_MODE !== undefined) {
   throw new Error("SIMULATION_MODE was removed; use APPOINTMENT_MODE=simulate-timeline instead");
@@ -99,6 +100,8 @@ export const config = {
   enableDesktopNotification: boolean("ENABLE_DESKTOP_NOTIFICATION", true),
   enableSound: boolean("ENABLE_SOUND", true),
   notificationProvider,
+  telegram: parseTelegramConfig(process.env),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "",
   enableOpenBrowser: boolean("ENABLE_OPEN_BROWSER", true),
   enableScreenshot: boolean("ENABLE_SCREENSHOT", true),
   debugScreenshots: boolean("DEBUG_SCREENSHOTS", false),
@@ -113,5 +116,10 @@ export const config = {
   retryBackoffMs: number("RETRY_BACKOFF_MS", 5_000),
   statePath: path.resolve("data/state.json"),
   simulationStatePath: path.resolve("data/simulation-state.json"),
+  customerStatePath: path.resolve("data/customer-state.json"),
+  customersConfigPaths: {
+    real: path.resolve(process.env.CUSTOMERS_CONFIG_PATH ?? "config/customers.json"),
+    simulation: path.resolve(process.env.SIMULATION_CUSTOMERS_CONFIG_PATH ?? "config/customers.simulation.json")
+  },
   screenshotDir: path.resolve("screenshots")
 };
