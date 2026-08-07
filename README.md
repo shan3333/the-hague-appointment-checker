@@ -192,7 +192,8 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
     "customer-001": {
       "lastMatchingDates": ["2026-08-20"],
       "lastCheckedAt": "2026-08-07T10:00:00.000Z",
-      "lastNotifiedAt": "2026-08-07T10:00:00.000Z"
+      "lastNotifiedAt": "2026-08-07T10:00:00.000Z",
+      "expiryNotificationSent": false
     }
   }
 }
@@ -224,6 +225,37 @@ simulation example contains fake customer and Telegram chat IDs only.
 filter. Without `--customers`, all existing single-user behavior remains unchanged,
 including desktop notifications and its once-per-available-cycle policy. Customer
 alerts do not reserve an appointment and never attempt a booking.
+
+### Customer lifecycle notifications
+
+After creating a customer's Telegram group, adding the bot, obtaining the chat
+ID, and validating `config/customers.json`, manually send a real activation
+confirmation with:
+
+```bash
+npm run customer:activate -- customer-001
+```
+
+The command always loads the real customer configuration. It sends only to the
+selected customer and refuses unknown, disabled, or expired customers. Merely
+adding a customer to the JSON file never sends an activation message.
+
+To test activation safely with simulation customers only:
+
+```bash
+npm run customer:activate:simulate -- simulation-customer-a
+```
+
+This command is restricted to `config/customers.simulation.json` and clearly
+labels the notification as simulation. Neither lifecycle command falls back to
+the other mode's configuration.
+
+When an enabled customer passes the inclusive `expiresAt` date, the customer is
+excluded from appointment matching and receives one monitoring-ended message.
+Successful delivery sets `expiryNotificationSent` in the local customer state,
+so later cycles do not resend it. A failed delivery is logged, remains eligible
+for retry on a later cycle, and does not stop other customers from being
+processed. Customer configuration is never modified automatically.
 
 For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
 

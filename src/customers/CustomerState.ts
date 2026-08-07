@@ -5,6 +5,7 @@ export interface CustomerNotificationState {
   lastMatchingDates: string[];
   lastCheckedAt: string | null;
   lastNotifiedAt: string | null;
+  expiryNotificationSent: boolean;
 }
 
 export interface CustomersState {

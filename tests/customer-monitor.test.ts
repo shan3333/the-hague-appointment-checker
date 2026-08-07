@@ -144,7 +144,14 @@ describe("multi-customer evaluation", () => {
       ]
     });
     const summary = await evaluateCustomers(context.options);
-    expect(summary).toMatchObject({ evaluated: 1, expired: 1, disabled: 1, notificationsSent: 1 });
+    expect(summary).toMatchObject({
+      evaluated: 1,
+      expired: 1,
+      disabled: 1,
+      notificationsAttempted: 2,
+      notificationsSent: 2,
+      notificationsFailed: 0
+    });
     expect(context.messages).toContain("Customer expired monitoring expired.");
   });
 

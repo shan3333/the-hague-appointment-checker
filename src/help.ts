@@ -5,6 +5,8 @@ Usage:
   npm run check:simulate     Run one fixed simulated check
   npm run monitor:real       Monitor the real website
   npm run monitor:simulate   Run the local timeline simulator
+  npm run customer:activate -- <id>            Send a real customer activation confirmation
+  npm run customer:activate:simulate -- <id>   Send a simulation-customer activation test
   npm run debug              Visible one-shot inspection at normal speed
   npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open
   npm run test-notification  Test enabled desktop and Telegram notifications
