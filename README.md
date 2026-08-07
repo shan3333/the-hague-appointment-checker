@@ -149,6 +149,13 @@ to simulation customers. That local file is ignored by Git; the committed
 `config/customers.example.json` contains synthetic IDs only. Set a different real
 path with `CUSTOMERS_CONFIG_PATH` if needed.
 
+The selected customer file is reloaded and fully validated at the beginning of
+every monitoring cycle. Customer additions and changes to filters, `enabled`,
+`expiresAt`, or `chatId` therefore take effect on the next cycle without a process
+restart. If a reload fails, that cycle fails closed: stale customer data is not
+used, no browser check or alert occurs, and the monitor retries normally on the
+next scheduled cycle.
+
 ```json
 [
   {
