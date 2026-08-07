@@ -1,0 +1,33 @@
+[
+  {
+    "id": "customer-001",
+    "chatId": "-1001111111111",
+    "enabled": true,
+    "filter": {
+      "type": "before",
+      "date": "2026-09-01"
+    },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "customer-002",
+    "chatId": "-1002222222222",
+    "enabled": true,
+    "filter": {
+      "type": "between",
+      "start": "2026-09-01",
+      "end": "2026-09-30"
+    },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "customer-003",
+    "chatId": "-1003333333333",
+    "enabled": true,
+    "filter": {
+      "type": "within",
+      "value": "1m"
+    },
+    "expiresAt": "2026-09-07"
+  }
+]

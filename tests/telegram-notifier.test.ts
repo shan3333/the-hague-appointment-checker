@@ -64,6 +64,14 @@ describe("TelegramNotifier", () => {
     await expect(notifier.notify(notification)).rejects.not.toThrow("secret-token");
   });
 
+  it("sends to an explicitly selected customer destination", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(response({ ok: true }));
+    const notifier = new TelegramNotifier("secret-token", "default-chat", 1000, fetchFn);
+    await notifier.notify(notification, "customer-chat");
+    const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).chat_id).toBe("customer-chat");
+  });
+
   it("reports network failure", async () => {
     const notifier = new TelegramNotifier("token", "chat", 1000, vi.fn().mockRejectedValue(new Error("network down")));
     await expect(notifier.notify(notification)).rejects.toThrow("network down");

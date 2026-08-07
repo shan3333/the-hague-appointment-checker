@@ -9,6 +9,10 @@ interface TelegramResponse {
   description?: string;
 }
 
+function redact(value: string, secrets: readonly string[]): string {
+  return secrets.filter(Boolean).reduce((safe, secret) => safe.replaceAll(secret, "[REDACTED]"), value);
+}
+
 function formatDetectedAt(notification: Notification): string {
   const timezone = typeof notification.metadata.timezone === "string"
     ? notification.metadata.timezone
@@ -45,7 +49,7 @@ export class TelegramNotifier implements NotificationProvider {
     private readonly fetchFn: TelegramFetch = globalThis.fetch
   ) {}
 
-  async notify(notification: Notification): Promise<void> {
+  async notify(notification: Notification, chatId = this.chatId): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -55,7 +59,7 @@ export class TelegramNotifier implements NotificationProvider {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            chat_id: this.chatId,
+            chat_id: chatId,
             text: formatTelegramMessage(notification),
             disable_web_page_preview: false
           }),
@@ -74,9 +78,7 @@ export class TelegramNotifier implements NotificationProvider {
     } catch (error) {
       if (controller.signal.aborted) throw new Error(`Telegram request timed out after ${this.timeoutMs}ms`);
       const safeMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(safeMessage
-        .replaceAll(this.botToken, "[REDACTED]")
-        .replaceAll(this.chatId, "[REDACTED]"));
+      throw new Error(redact(safeMessage, [this.botToken, this.chatId, chatId]));
     } finally {
       clearTimeout(timeout);
     }

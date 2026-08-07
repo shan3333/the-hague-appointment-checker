@@ -12,24 +12,36 @@ import {
   calculateDateRange,
   describeDateFilter,
   evaluateDateFilter,
-  parseDateFilterArgs,
-  selectSimulationDates,
-  type DateFilter
+  selectSimulationDates
 } from "./dateFilter.js";
 import { resolveCommandRuntimeOptions } from "./runtimeOptions.js";
+import {
+  loadCustomers,
+  resolveCustomersConfigPath,
+  type CustomerConfig
+} from "./customers/CustomerConfig.js";
+import {
+  evaluateCustomers,
+  logCustomerAvailability,
+  logCustomerSummary
+} from "./customers/CustomerMonitor.js";
+import { loadCustomersState, saveCustomersState } from "./customers/CustomerState.js";
+import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
+import { createNotification } from "./notifications/Notification.js";
+import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
 
 const action = process.argv[2] ?? "check";
 
-function parseCliFilter(): DateFilter | undefined {
+function parseCliOptions() {
   try {
-    return parseDateFilterArgs(process.argv.slice(3));
+    return parseCustomerCliOptions(process.argv.slice(3));
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
 }
 
-const dateFilter = parseCliFilter();
+const { dateFilter, customersMode } = parseCliOptions();
 
 const runtimeMode = resolveRuntimeMode({
   appointmentMode: config.appointmentMode,
@@ -47,6 +59,17 @@ const commandRuntime = resolveCommandRuntimeOptions({
 });
 printModeBanner(runtimeMode, config.url, config, commandRuntime);
 if (dateFilter) logger.info(`Active appointment date filter: ${describeDateFilter(dateFilter)}`);
+
+let customers: CustomerConfig[] = [];
+let customerNotifier: TelegramNotifier | undefined;
+if (customersMode) {
+  if (!config.telegramBotToken) throw new Error("--customers requires TELEGRAM_BOT_TOKEN");
+  const customerConfigurationMode = runtimeMode.kind === "real" ? "real" : "simulation";
+  const customersConfigPath = resolveCustomersConfigPath(customerConfigurationMode, config.customersConfigPaths);
+  customers = await loadCustomers(customersConfigPath);
+  customerNotifier = new TelegramNotifier(config.telegramBotToken, "");
+  logger.info(`Loaded ${customers.length} customer configurations.`);
+}
 
 const timelineSimulator = runtimeMode.kind === "simulation" && runtimeMode.type === "timeline"
   ? new TimelineSimulator(
@@ -122,6 +145,52 @@ async function performCheck(): Promise<void> {
     })
   });
   const rawStatus = result.status;
+  if (customersMode) {
+    const customerState = await loadCustomersState(config.customerStatePath);
+    if (rawStatus === "AVAILABLE" || rawStatus === "NOT_AVAILABLE") {
+      logCustomerAvailability({
+        status: rawStatus,
+        appointmentDates: result.appointmentDates ?? [],
+        isSimulation: runtimeMode.kind === "simulation",
+        simulationCheckNumber: simulation.timelineCheckNumber,
+        log: {
+          info: message => logger.info(message),
+          error: message => logger.error(message)
+        }
+      });
+      const summary = await evaluateCustomers({
+        customers,
+        state: customerState,
+        status: rawStatus,
+        appointmentDates: result.appointmentDates ?? [],
+        now,
+        timezone: config.timezone,
+        url: config.url,
+        isSimulation: runtimeMode.kind === "simulation",
+        sender: {
+          send: async (draft, chatId) => customerNotifier!.notify(createNotification(draft), chatId)
+        },
+        log: {
+          info: message => logger.info(message),
+          error: message => logger.error(message)
+        }
+      });
+      logCustomerSummary(summary, {
+        info: message => logger.info(message),
+        error: message => logger.error(message)
+      });
+      await saveCustomersState(config.customerStatePath, customerState);
+    } else {
+      logger.error("Customer evaluation skipped because the appointment page did not load successfully");
+    }
+    await saveState(config.statePath, nextState(previous, rawStatus, now, false, {
+      rawStatus,
+      availableDates: result.appointmentDates ?? [],
+      matchingDates: []
+    }));
+    if (rawStatus === "PAGE_NOT_LOADED" || rawStatus === "ERROR") process.exitCode = 1;
+    return;
+  }
   const evaluation = evaluateDateFilter(rawStatus, result.appointmentDates ?? [], range, dateFilter !== undefined);
   const effectiveStatus = evaluation.status;
   logger.info(`Status: ${effectiveStatus}`, { rawStatus, reason: result.reason });

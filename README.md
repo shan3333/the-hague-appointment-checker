@@ -78,7 +78,7 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run help` | Print CLI commands without checking the website |
 | `npm run test-notification` | Test only the platform notification provider |
-| `npm run reset-state` | Reset appointment state and the timeline index |
+| `npm run reset-state` | Reset appointment, timeline, and per-customer notification state |
 | `npm run typecheck` | Validate TypeScript without emitting files |
 | `npm test` | Run all unit tests once |
 | `npm run build` | Compile production JavaScript into `dist/` |
@@ -124,6 +124,106 @@ dates. The current notification policy remains one notification on every complet
 cycle that has a matching appointment. One-shot `check`, `debug`, and `debug:slow`
 runs therefore also notify whenever they detect matching availability, even when
 the saved status and matching dates are unchanged.
+
+## Multi-customer monitoring MVP
+
+Multi-customer mode uses one Telegram bot and one website check for all configured
+customers. Each customer can use a separate private chat or Telegram group, date
+filter, and expiry date. The checker parses the available dates once, evaluates
+that same result for every active customer, and sends only the matching dates to
+that customer's chat.
+
+Enable it explicitly with `--customers`:
+
+```bash
+cp config/customers.example.json config/customers.json
+npm run monitor:real -- --customers
+```
+
+Set `TELEGRAM_BOT_TOKEN` in `.env`. Multi-customer mode uses each customer's
+`chatId`; the global `TELEGRAM_CHAT_ID` remains the destination for existing
+single-user notifications and is not required by `--customers`.
+
+Real multi-customer mode loads only `config/customers.json`. It never falls back
+to simulation customers. That local file is ignored by Git; the committed
+`config/customers.example.json` contains synthetic IDs only. Set a different real
+path with `CUSTOMERS_CONFIG_PATH` if needed.
+
+```json
+[
+  {
+    "id": "customer-001",
+    "chatId": "-1001111111111",
+    "enabled": true,
+    "filter": { "type": "before", "date": "2026-09-01" },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "customer-002",
+    "chatId": "-1002222222222",
+    "enabled": true,
+    "filter": { "type": "between", "start": "2026-09-01", "end": "2026-09-30" },
+    "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "customer-003",
+    "chatId": "-1003333333333",
+    "enabled": true,
+    "filter": { "type": "within", "value": "1m" },
+    "expiresAt": "2026-09-07"
+  }
+]
+```
+
+Required fields are `id`, `chatId`, `enabled`, `filter`, and `expiresAt`.
+Customer IDs must be unique. Filters use the exact validation and inclusive date
+boundaries of `--before`, `--within`, and `--between`.
+
+`expiresAt` is an inclusive calendar date in `MONITOR_TIMEZONE` (Europe/Amsterdam
+by default). A customer remains active through 23:59:59 on that date and is
+skipped beginning the following local calendar day. Disabled and expired entries
+remain in the file but receive no alerts.
+
+Multi-customer alerts use per-customer state in `data/customer-state.json`:
+
+```json
+{
+  "customers": {
+    "customer-001": {
+      "lastMatchingDates": ["2026-08-20"],
+      "lastCheckedAt": "2026-08-07T10:00:00.000Z",
+      "lastNotifiedAt": "2026-08-07T10:00:00.000Z"
+    }
+  }
+}
+```
+
+The first match sends an alert. An unchanged set of matching dates is suppressed;
+changed dates, a newly earlier date, or a match after a no-match cycle sends a new
+alert. State is independent between customers. A failed Telegram delivery for one
+customer does not stop evaluation of the others and is retried on a later cycle.
+`npm run reset-state` resets this notification state without changing either
+customer configuration file.
+
+Simulation multi-customer mode loads only `config/customers.simulation.json` and
+never falls back to `config/customers.json`. Create it from the simulation-only
+example and use synthetic or dedicated test chat IDs:
+
+```bash
+cp config/customers.simulation.example.json config/customers.simulation.json
+npm run monitor:simulate -- --customers
+```
+
+Both `config/customers.simulation.json` and the real customer file are ignored by
+Git. Override only the simulation path with `SIMULATION_CUSTOMERS_CONFIG_PATH`.
+If the required mode-specific file is missing, startup fails and names the exact
+file to create; there is deliberately no cross-mode fallback. The checked-in
+simulation example contains fake customer and Telegram chat IDs only.
+
+`--customers` cannot be combined with a CLI `--within`, `--before`, or `--between`
+filter. Without `--customers`, all existing single-user behavior remains unchanged,
+including desktop notifications and its once-per-available-cycle policy. Customer
+alerts do not reserve an appointment and never attempt a booking.
 
 For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
 

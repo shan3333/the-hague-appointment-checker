@@ -17,6 +17,8 @@
   "files": [
     "dist/",
     "src/",
+    "config/customers.example.json",
+    "config/customers.simulation.example.json",
     ".env.example",
     "README.md",
     "CHANGELOG.md",

@@ -8,7 +8,7 @@ Usage:
   npm run debug              Visible one-shot inspection at normal speed
   npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open
   npm run test-notification  Test enabled desktop and Telegram notifications
-  npm run reset-state        Reset appointment and simulation state
+  npm run reset-state        Reset appointment, simulation, and customer state
   npm run typecheck          Validate TypeScript
   npm test                   Run unit tests
   npm run build              Build production JavaScript`);
@@ -24,3 +24,8 @@ Appointment date filters (npm requires -- before forwarded options):
 --between uses strict YYYY-MM-DD dates and includes both boundaries.
 Only one of --within, --before, or --between may be used.
 Supported --within units: d (days), w (weeks), m (calendar months).`);
+
+console.log(`
+Multi-customer monitoring (cannot be combined with a CLI date filter):
+  npm run monitor:real -- --customers
+  npm run monitor:simulate -- --customers`);
