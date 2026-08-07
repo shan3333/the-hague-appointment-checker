@@ -1,9 +1,9 @@
-import { DateTime } from "luxon";
 import { calculateDateRange, describeDateFilter, evaluateDateFilter } from "../dateFilter.js";
 import type { NotificationDraft } from "../notifications/Notification.js";
 import type { AppointmentStatus } from "../types.js";
 import type { CustomerConfig } from "./CustomerConfig.js";
 import { matchingDatesDiffer, type CustomersState } from "./CustomerState.js";
+import { expiryNotification, isCustomerExpired } from "./CustomerLifecycle.js";
 
 export interface CustomerNotificationSender {
   send(notification: NotificationDraft, chatId: string): Promise<void>;
@@ -75,8 +75,6 @@ export async function evaluateCustomers(options: {
   log: CustomerLog;
 }): Promise<CustomerEvaluationSummary> {
   const { customers, state, status, appointmentDates, now, timezone, url, isSimulation, sender, log } = options;
-  const today = DateTime.fromJSDate(now, { zone: timezone }).toISODate();
-  if (!today) throw new Error(`Could not calculate current date in ${timezone}`);
   let evaluated = 0;
   let expired = 0;
   let disabled = 0;
@@ -90,9 +88,34 @@ export async function evaluateCustomers(options: {
       disabled += 1;
       continue;
     }
-    if (customer.expiresAt < today) {
+    const previous = state.customers[customer.id] ?? {
+      lastMatchingDates: [], lastCheckedAt: null, lastNotifiedAt: null, expiryNotificationSent: false
+    };
+    if (isCustomerExpired(customer, now, timezone)) {
       expired += 1;
       log.info(`Customer ${customer.id} monitoring expired.`);
+      let expirySent = previous.expiryNotificationSent ?? false;
+      if (!expirySent) {
+        notificationsAttempted += 1;
+        try {
+          await sender.send(expiryNotification(customer, timezone, isSimulation), customer.chatId);
+          expirySent = true;
+          notificationsSent += 1;
+          log.info(`  Expiry notification: SENT`);
+        } catch (error) {
+          notificationsFailed += 1;
+          log.error(`Expiry notification failed for customer ${customer.id}: ${error instanceof Error ? error.message : String(error)}`);
+          log.info("  Expiry notification: FAILED");
+        }
+      } else {
+        log.info("  Expiry notification: ALREADY SENT");
+      }
+      state.customers[customer.id] = {
+        lastMatchingDates: previous.lastMatchingDates,
+        lastCheckedAt: now.toISOString(),
+        lastNotifiedAt: expirySent && !previous.expiryNotificationSent ? now.toISOString() : previous.lastNotifiedAt,
+        expiryNotificationSent: expirySent
+      };
       continue;
     }
     evaluated += 1;
@@ -100,9 +123,6 @@ export async function evaluateCustomers(options: {
     const evaluation = evaluateDateFilter(status, appointmentDates, range, true);
     const matchingDates = evaluation.matchingDates;
     if (matchingDates.length > 0) customersWithMatches += 1;
-    const previous = state.customers[customer.id] ?? {
-      lastMatchingDates: [], lastCheckedAt: null, lastNotifiedAt: null
-    };
     const changed = matchingDatesDiffer(previous.lastMatchingDates, matchingDates);
     const shouldSend = matchingDates.length > 0 && changed;
     log.info(`Customer ${customer.id}`);
@@ -147,7 +167,8 @@ export async function evaluateCustomers(options: {
     state.customers[customer.id] = {
       lastMatchingDates: shouldSend && !sent ? previous.lastMatchingDates : [...matchingDates],
       lastCheckedAt: now.toISOString(),
-      lastNotifiedAt: sent ? now.toISOString() : previous.lastNotifiedAt
+      lastNotifiedAt: sent ? now.toISOString() : previous.lastNotifiedAt,
+      expiryNotificationSent: previous.expiryNotificationSent ?? false
     };
   }
   return {

@@ -29,6 +29,7 @@ import { loadCustomersState, saveCustomersState } from "./customers/CustomerStat
 import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
 import { createNotification } from "./notifications/Notification.js";
 import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
+import { runWithReloadedCustomers } from "./customers/CustomerCycle.js";
 
 const action = process.argv[2] ?? "check";
 
@@ -60,15 +61,13 @@ const commandRuntime = resolveCommandRuntimeOptions({
 printModeBanner(runtimeMode, config.url, config, commandRuntime);
 if (dateFilter) logger.info(`Active appointment date filter: ${describeDateFilter(dateFilter)}`);
 
-let customers: CustomerConfig[] = [];
 let customerNotifier: TelegramNotifier | undefined;
+let customersConfigPath: string | undefined;
 if (customersMode) {
   if (!config.telegramBotToken) throw new Error("--customers requires TELEGRAM_BOT_TOKEN");
   const customerConfigurationMode = runtimeMode.kind === "real" ? "real" : "simulation";
-  const customersConfigPath = resolveCustomersConfigPath(customerConfigurationMode, config.customersConfigPaths);
-  customers = await loadCustomers(customersConfigPath);
+  customersConfigPath = resolveCustomersConfigPath(customerConfigurationMode, config.customersConfigPaths);
   customerNotifier = new TelegramNotifier(config.telegramBotToken, "");
-  logger.info(`Loaded ${customers.length} customer configurations.`);
 }
 
 const timelineSimulator = runtimeMode.kind === "simulation" && runtimeMode.type === "timeline"
@@ -95,7 +94,7 @@ function simulationDates(checkNumber?: number): string[] {
   );
 }
 
-async function performCheck(): Promise<void> {
+async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): Promise<void> {
   logger.info("Starting appointment check");
   const now = new Date();
   const previous = await loadState(config.statePath);
@@ -159,7 +158,7 @@ async function performCheck(): Promise<void> {
         }
       });
       const summary = await evaluateCustomers({
-        customers,
+        customers: cycleCustomers ?? [],
         state: customerState,
         status: rawStatus,
         appointmentDates: result.appointmentDates ?? [],
@@ -286,6 +285,18 @@ async function performCheck(): Promise<void> {
     matchingDates: evaluation.matchingDates
   }));
   if (effectiveStatus === "PAGE_NOT_LOADED" || effectiveStatus === "ERROR") process.exitCode = 1;
+}
+
+async function performCheck(): Promise<void> {
+  if (!customersMode || !customersConfigPath) return performLoadedCheck();
+  await runWithReloadedCustomers({
+    load: () => loadCustomers(customersConfigPath),
+    run: customers => performLoadedCheck(customers),
+    log: {
+      info: message => logger.info(message),
+      error: message => logger.error(message)
+    }
+  });
 }
 
 if (action === "check") await performCheck();

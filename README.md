@@ -149,6 +149,13 @@ to simulation customers. That local file is ignored by Git; the committed
 `config/customers.example.json` contains synthetic IDs only. Set a different real
 path with `CUSTOMERS_CONFIG_PATH` if needed.
 
+The selected customer file is reloaded and fully validated at the beginning of
+every monitoring cycle. Customer additions and changes to filters, `enabled`,
+`expiresAt`, or `chatId` therefore take effect on the next cycle without a process
+restart. If a reload fails, that cycle fails closed: stale customer data is not
+used, no browser check or alert occurs, and the monitor retries normally on the
+next scheduled cycle.
+
 ```json
 [
   {
@@ -192,7 +199,8 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
     "customer-001": {
       "lastMatchingDates": ["2026-08-20"],
       "lastCheckedAt": "2026-08-07T10:00:00.000Z",
-      "lastNotifiedAt": "2026-08-07T10:00:00.000Z"
+      "lastNotifiedAt": "2026-08-07T10:00:00.000Z",
+      "expiryNotificationSent": false
     }
   }
 }
@@ -224,6 +232,37 @@ simulation example contains fake customer and Telegram chat IDs only.
 filter. Without `--customers`, all existing single-user behavior remains unchanged,
 including desktop notifications and its once-per-available-cycle policy. Customer
 alerts do not reserve an appointment and never attempt a booking.
+
+### Customer lifecycle notifications
+
+After creating a customer's Telegram group, adding the bot, obtaining the chat
+ID, and validating `config/customers.json`, manually send a real activation
+confirmation with:
+
+```bash
+npm run customer:activate -- customer-001
+```
+
+The command always loads the real customer configuration. It sends only to the
+selected customer and refuses unknown, disabled, or expired customers. Merely
+adding a customer to the JSON file never sends an activation message.
+
+To test activation safely with simulation customers only:
+
+```bash
+npm run customer:activate:simulate -- simulation-customer-a
+```
+
+This command is restricted to `config/customers.simulation.json` and clearly
+labels the notification as simulation. Neither lifecycle command falls back to
+the other mode's configuration.
+
+When an enabled customer passes the inclusive `expiresAt` date, the customer is
+excluded from appointment matching and receives one monitoring-ended message.
+Successful delivery sets `expiryNotificationSent` in the local customer state,
+so later cycles do not resend it. A failed delivery is logged, remains eligible
+for retry on a later cycle, and does not stop other customers from being
+processed. Customer configuration is never modified automatically.
 
 For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
 
