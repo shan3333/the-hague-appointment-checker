@@ -6,13 +6,13 @@ import { openInDefaultBrowser } from "./system.js";
 import { loadState, matchingDatesChanged, nextState, saveState, shouldNotify } from "./state.js";
 import { runMonitor } from "./scheduler.js";
 import { SimulationController } from "./simulation/SimulationController.js";
-import { FileTimelineStateStore, TimelineSimulator } from "./simulation/TimelineSimulator.js";
+import { FileTimelineStateStore } from "./simulation/TimelineSimulator.js";
+import { loadSimulationScenario, ScenarioSimulator } from "./simulation/SimulationScenario.js";
 import { printModeBanner, resolveRuntimeMode, runModeCheck } from "./mode.js";
 import {
   calculateDateRange,
   describeDateFilter,
-  evaluateDateFilter,
-  selectSimulationDates
+  evaluateDateFilter
 } from "./dateFilter.js";
 import { resolveCommandRuntimeOptions } from "./runtimeOptions.js";
 import {
@@ -29,7 +29,7 @@ import { loadCustomersState, saveCustomersState } from "./customers/CustomerStat
 import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
 import { createNotification, type NotificationDraft } from "./notifications/Notification.js";
 import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
-import { runWithReloadedCustomers } from "./customers/CustomerCycle.js";
+import { logMonitoringRoundComplete, runWithReloadedCustomers } from "./customers/CustomerCycle.js";
 import { groupActiveCustomersByService } from "./customers/CustomerServiceGroups.js";
 import { getAppointmentService } from "./appointmentServices.js";
 import type { CustomerEvaluationSummary } from "./customers/CustomerMonitor.js";
@@ -49,8 +49,7 @@ const { dateFilter, customersMode } = parseCliOptions();
 
 const runtimeMode = resolveRuntimeMode({
   appointmentMode: config.appointmentMode,
-  simulateStatus: config.simulateStatus,
-  simulationSequence: config.simulationSequence
+  simulateStatus: config.simulateStatus
 });
 const commandRuntime = resolveCommandRuntimeOptions({
   action,
@@ -73,43 +72,36 @@ if (customersMode) {
   customerNotifier = new TelegramNotifier(config.telegramBotToken, "");
 }
 
-const timelineSimulator = runtimeMode.kind === "simulation" && runtimeMode.type === "timeline"
-  ? new TimelineSimulator(
-      runtimeMode.sequence,
+const timelineStore = new FileTimelineStateStore(config.simulationStatePath);
+const scenarioSimulator = runtimeMode.kind === "simulation" && runtimeMode.type === "timeline"
+  ? new ScenarioSimulator(
+      await loadSimulationScenario(config.simulationScenarioPath),
       config.simulationRepeat,
-      new FileTimelineStateStore(config.simulationStatePath)
+      timelineStore
     )
   : undefined;
 const fixedSimulationStatus = runtimeMode.kind === "simulation" && runtimeMode.type === "fixed"
-  ? runtimeMode.sequence[0]
+  ? runtimeMode.sequence![0]
   : undefined;
-const simulationController = new SimulationController(fixedSimulationStatus, timelineSimulator);
-
-function simulationDates(checkNumber?: number): string[] {
-  if (runtimeMode.kind !== "simulation" || runtimeMode.type === "fixed") {
-    return config.simulateAppointmentDates;
-  }
-  return selectSimulationDates(
-    config.simulateAppointmentDates,
-    config.simulationDateSequence,
-    checkNumber,
-    config.simulationRepeat
-  );
-}
+const simulationController = new SimulationController(fixedSimulationStatus);
 
 async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): Promise<void> {
   if (customersMode) return performCustomerServiceChecks(cycleCustomers ?? []);
   logger.info("Starting appointment check");
   const now = new Date();
   const previous = await loadState(config.statePath);
-  const simulation = runtimeMode.kind === "simulation"
+  const scenarioRound = scenarioSimulator ? await scenarioSimulator.beginRound() : undefined;
+  const scenarioAvailability = scenarioRound?.getAvailability("brp_existing_bsn");
+  const simulation = scenarioAvailability
+    ? { status: scenarioAvailability.status, timelineCheckNumber: scenarioRound!.roundNumber }
+    : runtimeMode.kind === "simulation"
     ? await simulationController.next()
     : {};
   if (simulation.timelineCheckNumber !== undefined) {
     logger.info(`Simulation check #${simulation.timelineCheckNumber}`);
     logger.info(`Returning ${simulation.status}`);
   }
-  const simulatedDates = simulationDates(simulation.timelineCheckNumber);
+  const simulatedDates = scenarioAvailability?.appointmentDates ?? config.simulateAppointmentDates;
   const range = calculateDateRange(now, dateFilter, config.timezone);
   const simulatedEvaluation = simulation.status === undefined
     ? undefined
@@ -121,7 +113,7 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
   const shouldCaptureAvailabilityScreenshot = (dates: readonly string[]) =>
     evaluateDateFilter("AVAILABLE", dates, range, dateFilter !== undefined).status === "AVAILABLE";
   const keepBrowserOpenMs = commandRuntime.keepBrowserOpenMs;
-  const result = await runModeCheck(runtimeMode, simulation.status, {
+  const result = await runModeCheck(runtimeMode, simulation.status as "AVAILABLE" | "NOT_AVAILABLE" | undefined, {
     real: () => checkOnce({ bookingUrl: config.url, captureAvailabilityScreenshot, shouldCaptureAvailabilityScreenshot, keepBrowserOpenMs }),
     simulated: status => checkOnce({
       captureAvailabilityScreenshot,
@@ -242,6 +234,7 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
     availableDates: evaluation.availableDates,
     matchingDates: evaluation.matchingDates
   }));
+  await scenarioRound?.complete();
   if (effectiveStatus === "PAGE_NOT_LOADED" || effectiveStatus === "ERROR") process.exitCode = 1;
 }
 
@@ -274,31 +267,35 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
     }));
   }
 
-  const simulation = isSimulation && groups.size > 0 ? await simulationController.next() : {};
-  const simulatedDates = simulationDates(simulation.timelineCheckNumber);
+  const scenarioRound = scenarioSimulator ? await scenarioSimulator.beginRound() : undefined;
+  const fixedSimulation = isSimulation && !scenarioRound && groups.size > 0
+    ? await simulationController.next()
+    : {};
   for (const [serviceId, serviceCustomers] of groups) {
     const service = getAppointmentService(serviceId);
     logger.info(`Checking ${serviceId} for ${serviceCustomers.length} active customers`);
-    const result = await runModeCheck(runtimeMode, simulation.status, {
-      real: () => checkOnce({ bookingUrl: service.bookingUrl, keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs }),
-      simulated: status => checkOnce({
+    const result = scenarioRound
+      ? scenarioRound.getAvailability(serviceId)
+      : await runModeCheck(runtimeMode, fixedSimulation.status, {
+        real: () => checkOnce({ bookingUrl: service.bookingUrl, keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs }),
+        simulated: status => checkOnce({
         simulatedStatus: status,
-        simulatedAppointmentDates: simulatedDates,
+        simulatedAppointmentDates: config.simulateAppointmentDates,
         keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs,
         simulationView: {
-          cycleNumber: simulation.timelineCheckNumber ?? 1,
+          cycleNumber: 1,
           previousStatus: null,
           currentStatus: status,
           notificationShouldSend: status === "AVAILABLE",
           browserWouldOpen: false,
           screenshotWouldBeTaken: false,
           timestamp: now.toISOString(),
-          availableDates: simulatedDates,
+          availableDates: config.simulateAppointmentDates,
           activeFilter: "CUSTOMER-SPECIFIC",
           countdownSeconds: 0
         }
-      })
-    });
+        })
+      });
     if (result.status !== "AVAILABLE" && result.status !== "NOT_AVAILABLE") {
       logger.error(`Customer evaluation skipped for ${serviceId} because the appointment page did not load successfully`);
       process.exitCode = 1;
@@ -307,7 +304,7 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
     logger.info(`Found ${(result.appointmentDates ?? []).length} available dates for ${serviceId}`);
     logCustomerAvailability({
       status: result.status, appointmentDates: result.appointmentDates ?? [], isSimulation,
-      simulationCheckNumber: simulation.timelineCheckNumber, log
+      log
     });
     addSummary(total, await evaluateCustomers({
       customers: serviceCustomers, state, status: result.status, appointmentDates: result.appointmentDates ?? [],
@@ -316,11 +313,12 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
   }
   logCustomerSummary(total, log);
   await saveCustomersState(config.customerStatePath, state);
+  await scenarioRound?.complete();
 }
 
 async function performCheck(): Promise<void> {
   if (!customersMode || !customersConfigPath) return performLoadedCheck();
-  await runWithReloadedCustomers({
+  const result = await runWithReloadedCustomers({
     load: () => loadCustomers(customersConfigPath),
     run: customers => performLoadedCheck(customers),
     log: {
@@ -328,6 +326,9 @@ async function performCheck(): Promise<void> {
       error: message => logger.error(message)
     }
   });
+  if (result === "completed" && action === "monitor") {
+    logMonitoringRoundComplete({ info: message => logger.info(message), error: message => logger.error(message) });
+  }
 }
 
 if (action === "check") await performCheck();

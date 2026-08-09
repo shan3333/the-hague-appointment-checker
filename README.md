@@ -62,7 +62,7 @@ The checked-in npm lockfile makes `npm ci` preferable in CI and clean checkouts.
 
 - `real` uses the municipality website.
 - `simulate-fixed` requires `SIMULATE_STATUS=AVAILABLE` or `NOT_AVAILABLE`.
-- `simulate-timeline` requires `SIMULATION_SEQUENCE`.
+- `simulate-timeline` loads the date-driven scenario selected by `SIMULATION_SCENARIO`.
 
 The npm commands below explicitly select their mode, so simulation settings in
 `.env` cannot change a real command into a simulated one. The removed legacy
@@ -75,7 +75,7 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run check` | One headless real-website check, then exit |
 | `npm run check:simulate` | One fixed simulated check using `SIMULATE_STATUS` |
 | `npm run monitor:real` | Repeated headless real checks inside the configured schedule |
-| `npm run monitor:simulate` | Headed local timeline simulation using `SIMULATION_SEQUENCE` |
+| `npm run monitor:simulate` | Local scenario simulation using service-specific rounds |
 | `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run help` | Print CLI commands without checking the website |
@@ -288,13 +288,15 @@ so later cycles do not resend it. A failed delivery is logged, remains eligible
 for retry on a later cycle, and does not stop other customers from being
 processed. Customer configuration is never modified automatically.
 
-For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
+For timeline testing, define service availability by round in `config/simulation.json`, then run:
 
 ```bash
 npm run monitor:simulate -- --between 2026-08-15 2026-09-01
 ```
 
-For example, `SIMULATION_DATE_SEQUENCE=-;2026-08-10;2026-08-20,2026-08-25;2026-09-10` moves from no dates, to before-range availability, to two matches, and finally to after-range availability.
+Each round contains a `services` object whose keys are supported service IDs and
+whose values are arrays of ISO dates. Empty or omitted service arrays mean
+`NOT_AVAILABLE`; non-empty arrays mean `AVAILABLE`.
 
 ## Configuration
 
@@ -350,12 +352,11 @@ treated as having no matching appointment.
 ### Timeline simulation
 
 ```dotenv
-SIMULATION_SEQUENCE=NOT_AVAILABLE,AVAILABLE,AVAILABLE,NOT_AVAILABLE
+SIMULATION_SCENARIO=config/simulation.json
 SIMULATION_REPEAT=true
 SIMULATION_INTERVAL_SECONDS=5
 SIMULATION_KEEP_BROWSER_OPEN_MS=30000
 SIMULATION_PAUSE_BEFORE_CLOSE=false
-SIMULATION_DATE_SEQUENCE=2026-09-10;2026-08-10,2026-08-12;-
 ```
 
 ```bash
@@ -363,21 +364,19 @@ npm run reset-state
 npm run monitor:simulate
 ```
 
-Timeline simulation uses `page.setContent()` to show a local dashboard. It
-displays the cycle number, previous status, current status, expected notification,
-browser and screenshot behaviour, timestamp, and countdown. AVAILABLE is green;
-NOT_AVAILABLE is red. The Playwright simulation never navigates to the target
-website for detection. If `ENABLE_OPEN_BROWSER=true`, the normal alert pipeline
-can still deliberately open the appointment URL after an AVAILABLE result; set it
-to `false` for a fully offline simulation.
+Timeline customer simulation reads `config/simulation.json` and never navigates
+to the municipality website. All active services use the same round; the round
+advances once only after every service group and customer has been evaluated.
+Multiple customers sharing a service receive the same raw date list and retain
+their independent production date-filter evaluation.
 
 The dashboard remains open for `SIMULATION_KEEP_BROWSER_OPEN_MS`. With
 `SIMULATION_PAUSE_BEFORE_CLOSE=true`, an interactive run also waits for Enter.
-The sequence index is stored locally and `npm run reset-state` resets it.
-`SIMULATION_DATE_SEQUENCE` aligns date data with timeline checks: semicolons
-separate cycles, commas separate multiple dates in one cycle, and `-` means no
-dates. Existing status-only timelines still work. If the date sequence is absent,
-`SIMULATE_APPOINTMENT_DATES` is used as a fallback.
+The scenario round index is stored locally and `npm run reset-state` resets it.
+`SIMULATION_REPEAT=true` wraps to the first round after the last. When false, the
+final round is reused. `SIMULATION_SEQUENCE` and `SIMULATION_DATE_SEQUENCE` are no
+longer used and can be removed from existing `.env` files. Fixed one-shot
+simulation continues to use `SIMULATE_STATUS` and `SIMULATE_APPOINTMENT_DATES`.
 
 ## Notifications and availability actions
 

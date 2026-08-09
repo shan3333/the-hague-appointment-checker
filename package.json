@@ -19,6 +19,7 @@
     "src/",
     "config/customers.example.json",
     "config/customers.simulation.example.json",
+    "config/simulation.json",
     ".env.example",
     "README.md",
     "CHANGELOG.md",

@@ -198,26 +198,18 @@ describe("multi-customer evaluation", () => {
     expect(output).toContain("  Notification: NOT NEEDED");
   });
 
-  it("clearly logs the dates belonging to the current simulation cycle", () => {
+  it("uses the same concise availability logging in simulation and real modes", () => {
     const context = setup();
     logCustomerAvailability({
       status: "AVAILABLE",
       appointmentDates: ["2026-08-12", "2026-08-25", "2026-09-10"],
       isSimulation: true,
-      simulationCheckNumber: 3,
       log: context.options.log
     });
     expect(context.messages).toEqual([
-      "----------------------------------------",
-      "Simulation check #3",
       "Raw status: AVAILABLE",
-      "Available appointment dates:",
-      "  2026-08-12",
-      "  2026-08-25",
-      "  2026-09-10",
-      "Total available appointment dates: 3",
-      "Evaluating customers...",
-      "----------------------------------------"
+      "Available appointment dates: 2026-08-12, 2026-08-25, 2026-09-10",
+      "Total available appointment dates: 3"
     ]);
   });
 

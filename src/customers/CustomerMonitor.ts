@@ -33,22 +33,9 @@ export function logCustomerAvailability(options: {
   status: AppointmentStatus;
   appointmentDates: readonly string[];
   isSimulation: boolean;
-  simulationCheckNumber?: number;
   log: CustomerLog;
 }): void {
-  const { status, appointmentDates, isSimulation, simulationCheckNumber, log } = options;
-  if (isSimulation) {
-    log.info("----------------------------------------");
-    log.info(`Simulation check #${simulationCheckNumber ?? 1}`);
-    log.info(`Raw status: ${status}`);
-    log.info("Available appointment dates:");
-    if (appointmentDates.length === 0) log.info("  NONE");
-    else for (const date of appointmentDates) log.info(`  ${date}`);
-    log.info(`Total available appointment dates: ${appointmentDates.length}`);
-    log.info("Evaluating customers...");
-    log.info("----------------------------------------");
-    return;
-  }
+  const { status, appointmentDates, log } = options;
   log.info(`Raw status: ${status}`);
   log.info(`Available appointment dates: ${dates(appointmentDates)}`);
   log.info(`Total available appointment dates: ${appointmentDates.length}`);

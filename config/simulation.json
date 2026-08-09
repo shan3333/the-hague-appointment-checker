@@ -1,0 +1,46 @@
+{
+  "rounds": [
+    {
+      "services": {
+        "brp_existing_bsn": [],
+        "brp_eu_eea_swiss_first_registration": []
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": [],
+        "brp_eu_eea_swiss_first_registration": ["2026-08-20"]
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": [],
+        "brp_eu_eea_swiss_first_registration": ["2026-09-10"]
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": ["2026-09-10"],
+        "brp_eu_eea_swiss_first_registration": ["2026-09-10", "2026-09-15"]
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": ["2026-09-10"],
+        "brp_eu_eea_swiss_first_registration": ["2026-09-10", "2026-09-15"]
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": [],
+        "brp_eu_eea_swiss_first_registration": []
+      }
+    },
+    {
+      "services": {
+        "brp_existing_bsn": ["2026-09-10"],
+        "brp_eu_eea_swiss_first_registration": ["2026-09-10"]
+      }
+    }
+  ]
+}

@@ -7,13 +7,12 @@ export type RuntimeMode =
   | {
       kind: "simulation";
       type: "timeline" | "fixed";
-      sequence: readonly SimulatedStatus[];
+      sequence?: readonly SimulatedStatus[];
     };
 
 export interface ModeConfiguration {
   appointmentMode?: string;
   simulateStatus?: SimulatedStatus;
-  simulationSequence: readonly SimulatedStatus[];
 }
 
 export interface ModeCheckHandlers {
@@ -44,10 +43,7 @@ export function resolveRuntimeMode(configuration: ModeConfiguration): RuntimeMod
     return { kind: "simulation", type: "fixed", sequence: [configuration.simulateStatus] };
   }
   if (requested === "simulate-timeline") {
-    if (configuration.simulationSequence.length === 0) {
-      throw new Error("APPOINTMENT_MODE=simulate-timeline requires SIMULATION_SEQUENCE");
-    }
-    return { kind: "simulation", type: "timeline", sequence: configuration.simulationSequence };
+    return { kind: "simulation", type: "timeline" };
   }
   throw new Error("APPOINTMENT_MODE must be real, simulate-fixed, or simulate-timeline");
 }
@@ -84,7 +80,7 @@ export function printModeBanner(
     console.log("MODE: SIMULATION");
     console.log(`Type: ${mode.type}`);
     console.log(`Run type: ${runtime.runType}`);
-    console.log(`Sequence: ${mode.sequence.join(" -> ")}`);
+    if (mode.sequence?.length) console.log(`Sequence: ${mode.sequence.join(" -> ")}`);
     if (runtime.browser === "visible") console.log("Browser: visible");
     if (mode.type === "timeline") {
       console.log(`Simulation interval: ${configuration.simulationIntervalSeconds} second(s)`);

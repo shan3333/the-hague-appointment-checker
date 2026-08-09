@@ -5,6 +5,10 @@ export interface CustomerCycleLog {
   error(message: string): void;
 }
 
+export function logMonitoringRoundComplete(log: CustomerCycleLog): void {
+  log.info("----------------------------------------");
+}
+
 export async function runWithReloadedCustomers(options: {
   load(): Promise<CustomerConfig[]>;
   run(customers: readonly CustomerConfig[]): Promise<void>;
