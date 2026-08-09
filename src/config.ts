@@ -3,6 +3,7 @@ import path from "node:path";
 import type { NotificationProviderSetting } from "./notifications/NotificationProvider.js";
 import { parseDateOnly } from "./dateFilter.js";
 import { parseTelegramConfig } from "./notifications/TelegramConfig.js";
+import { APPOINTMENT_SERVICES } from "./appointmentServices.js";
 
 if (process.env.SIMULATION_MODE !== undefined) {
   throw new Error("SIMULATION_MODE was removed; use APPOINTMENT_MODE=simulate-timeline instead");
@@ -82,7 +83,7 @@ if (!notificationProviders.includes(notificationProvider)) {
 }
 
 export const config = {
-  url: process.env.APPOINTMENT_URL ?? "https://denhaag.mijnafspraakmaken.nl/?product=35",
+  url: APPOINTMENT_SERVICES.brp_existing_bsn.bookingUrl,
   appointmentMode,
   simulateStatus: rawSimulateStatus as "AVAILABLE" | "NOT_AVAILABLE" | undefined,
   simulationSequence: simulationSequence as Array<"AVAILABLE" | "NOT_AVAILABLE">,

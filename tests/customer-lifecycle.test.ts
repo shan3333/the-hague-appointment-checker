@@ -14,6 +14,7 @@ import type { CustomersState } from "../src/customers/CustomerState.js";
 const now = new Date("2026-08-07T10:00:00.000Z");
 const active: CustomerConfig = {
   id: "customer-a",
+  service: "brp_existing_bsn",
   chatId: "private-chat-a",
   enabled: true,
   filter: { kind: "before", date: "2026-09-01" },
@@ -93,7 +94,7 @@ describe("lifecycle configuration isolation", () => {
       simulation: path.join(directory, "customers.simulation.json")
     };
     const raw = (id: string, chatId: string) => [{
-      id, chatId, enabled: true,
+      id, service: "brp_existing_bsn", chatId, enabled: true,
       filter: { type: "before", date: "2026-09-01" }, expiresAt: "2026-09-07"
     }];
     await writeFile(paths.real, JSON.stringify(raw(realId, "real-chat")), "utf8");

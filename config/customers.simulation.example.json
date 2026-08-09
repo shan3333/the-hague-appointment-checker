@@ -1,6 +1,7 @@
 [
   {
     "id": "simulation-customer-a",
+    "service": "brp_eu_eea_swiss_first_registration",
     "chatId": "-1009000000001",
     "enabled": true,
     "filter": {
@@ -11,6 +12,7 @@
   },
   {
     "id": "simulation-customer-b",
+    "service": "brp_eu_eea_swiss_first_registration",
     "chatId": "-1009000000002",
     "enabled": true,
     "filter": {
@@ -22,6 +24,7 @@
   },
   {
     "id": "simulation-customer-c",
+    "service": "brp_existing_bsn",
     "chatId": "-1009000000003",
     "enabled": true,
     "filter": {

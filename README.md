@@ -26,6 +26,8 @@ npm run check
 ```
 
 This performs one headless check against the real appointment website and exits.
+The legacy single-user commands monitor product 35. Multi-customer mode selects
+the booking target from each customer's required `service` field.
 On Windows PowerShell, replace the copy command with:
 
 ```powershell
@@ -125,13 +127,23 @@ cycle that has a matching appointment. One-shot `check`, `debug`, and `debug:slo
 runs therefore also notify whenever they detect matching availability, even when
 the saved status and matching dates are unchanged.
 
+## Supported BRP services
+
+| Service ID | Appointment | Product |
+|---|---|---:|
+| `brp_existing_bsn` | Register again in BRP — existing BSN | 35 |
+| `brp_dutch_first_registration` | First BRP registration — Dutch citizen | 27 |
+| `brp_eu_eea_swiss_first_registration` | First BRP registration — EU/EEA/Swiss citizen | 28 |
+| `brp_residence_permit_first_registration` | First BRP registration — residence permit holder | 30 |
+
 ## Multi-customer monitoring MVP
 
-Multi-customer mode uses one Telegram bot and one website check for all configured
-customers. Each customer can use a separate private chat or Telegram group, date
-filter, and expiry date. The checker parses the available dates once, evaluates
-that same result for every active customer, and sends only the matching dates to
-that customer's chat.
+Multi-customer mode uses one Telegram bot. Each customer selects one supported
+service and can use a separate chat, date filter, and expiry date. Each cycle
+groups active customers by service, performs one website check per active service,
+parses its dates once, and reuses that result for every customer in that group.
+N customers across M active services therefore cause exactly M municipality
+checks (at most four), not N. Services with no active customers are not checked.
 
 Enable it explicitly with `--customers`:
 
@@ -160,6 +172,7 @@ next scheduled cycle.
 [
   {
     "id": "customer-001",
+    "service": "brp_eu_eea_swiss_first_registration",
     "chatId": "-1001111111111",
     "enabled": true,
     "filter": { "type": "before", "date": "2026-09-01" },
@@ -167,6 +180,7 @@ next scheduled cycle.
   },
   {
     "id": "customer-002",
+    "service": "brp_existing_bsn",
     "chatId": "-1002222222222",
     "enabled": true,
     "filter": { "type": "between", "start": "2026-09-01", "end": "2026-09-30" },
@@ -174,6 +188,7 @@ next scheduled cycle.
   },
   {
     "id": "customer-003",
+    "service": "brp_residence_permit_first_registration",
     "chatId": "-1003333333333",
     "enabled": true,
     "filter": { "type": "within", "value": "1m" },
@@ -182,9 +197,13 @@ next scheduled cycle.
 ]
 ```
 
-Required fields are `id`, `chatId`, `enabled`, `filter`, and `expiresAt`.
+Required fields are `id`, `service`, `chatId`, `enabled`, `filter`, and `expiresAt`.
 Customer IDs must be unique. Filters use the exact validation and inclusive date
 boundaries of `--before`, `--within`, and `--between`.
+
+`service` must be one of the four supported IDs above. Missing or unknown values
+fail validation and include the customer ID in the error. There is deliberately
+no fallback to product 35.
 
 `expiresAt` is an inclusive calendar date in `MONITOR_TIMEZONE` (Europe/Amsterdam
 by default). A customer remains active through 23:59:59 on that date and is
@@ -197,6 +216,7 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
 {
   "customers": {
     "customer-001": {
+      "service": "brp_eu_eea_swiss_first_registration",
       "lastMatchingDates": ["2026-08-20"],
       "lastCheckedAt": "2026-08-07T10:00:00.000Z",
       "lastNotifiedAt": "2026-08-07T10:00:00.000Z",
@@ -206,9 +226,11 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
 }
 ```
 
-The first match sends an alert. An unchanged set of matching dates is suppressed;
+The first match sends an alert containing that service's official booking URL.
+An unchanged set of matching dates is suppressed;
 changed dates, a newly earlier date, or a match after a no-match cycle sends a new
-alert. State is independent between customers. A failed Telegram delivery for one
+alert. State is independent by customer and service, so changing a customer ID's
+service starts availability deduplication fresh. A failed Telegram delivery for one
 customer does not stop evaluation of the others and is retried on a later cycle.
 `npm run reset-state` resets this notification state without changing either
 customer configuration file.
@@ -227,6 +249,8 @@ Git. Override only the simulation path with `SIMULATION_CUSTOMERS_CONFIG_PATH`.
 If the required mode-specific file is missing, startup fails and names the exact
 file to create; there is deliberately no cross-mode fallback. The checked-in
 simulation example contains fake customer and Telegram chat IDs only.
+Keep only synthetic or dedicated test destinations in the local simulation file;
+never reuse real customer group IDs there.
 
 `--customers` cannot be combined with a CLI `--within`, `--before`, or `--between`
 filter. Without `--customers`, all existing single-user behavior remains unchanged,

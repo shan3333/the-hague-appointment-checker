@@ -9,9 +9,9 @@ import {
 } from "../src/customers/CustomerConfig.js";
 
 const valid = [
-  { id: "customer-a", chatId: "chat-a", enabled: true, filter: { type: "before", date: "2026-09-01" }, expiresAt: "2026-09-07" },
-  { id: "customer-b", chatId: "chat-b", enabled: false, filter: { type: "between", start: "2026-09-01", end: "2026-09-30" }, expiresAt: "2026-09-07" },
-  { id: "customer-c", chatId: "chat-c", enabled: true, filter: { type: "within", value: "1m" }, expiresAt: "2026-09-07" }
+  { id: "customer-a", service: "brp_existing_bsn", chatId: "chat-a", enabled: true, filter: { type: "before", date: "2026-09-01" }, expiresAt: "2026-09-07" },
+  { id: "customer-b", service: "brp_dutch_first_registration", chatId: "chat-b", enabled: false, filter: { type: "between", start: "2026-09-01", end: "2026-09-30" }, expiresAt: "2026-09-07" },
+  { id: "customer-c", service: "brp_eu_eea_swiss_first_registration", chatId: "chat-c", enabled: true, filter: { type: "within", value: "1m" }, expiresAt: "2026-09-07" }
 ];
 
 describe("customer configuration", () => {
@@ -32,6 +32,8 @@ describe("customer configuration", () => {
 
   it.each([
     [[{ ...valid[0], id: "" }], /id is required/],
+    [[{ ...valid[0], service: undefined }], /service is required/],
+    [[{ ...valid[0], service: "foo" }], /Customer "customer-a" has unsupported service "foo"/],
     [[{ ...valid[0], chatId: "" }], /chatId is required/],
     [[{ ...valid[0], filter: { type: "unknown" } }], /unsupported filter type/],
     [[{ ...valid[0], filter: { type: "before", date: "not-a-date" } }], /invalid filter/],

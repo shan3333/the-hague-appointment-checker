@@ -10,6 +10,7 @@ const now = new Date("2026-08-07T10:00:00.000Z");
 function customer(overrides: Partial<CustomerConfig> = {}): CustomerConfig {
   return {
     id: "customer-a",
+    service: "brp_existing_bsn",
     chatId: "chat-a",
     enabled: true,
     filter: { kind: "before", date: "2026-09-01" },
@@ -41,7 +42,6 @@ function harness() {
       appointmentDates: result.appointmentDates,
       now,
       timezone: "Europe/Amsterdam",
-      url: "https://example.test/booking",
       isSimulation: true,
       sender,
       log

@@ -27,9 +27,12 @@ import {
 } from "./customers/CustomerMonitor.js";
 import { loadCustomersState, saveCustomersState } from "./customers/CustomerState.js";
 import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
-import { createNotification } from "./notifications/Notification.js";
+import { createNotification, type NotificationDraft } from "./notifications/Notification.js";
 import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
 import { runWithReloadedCustomers } from "./customers/CustomerCycle.js";
+import { groupActiveCustomersByService } from "./customers/CustomerServiceGroups.js";
+import { getAppointmentService } from "./appointmentServices.js";
+import type { CustomerEvaluationSummary } from "./customers/CustomerMonitor.js";
 
 const action = process.argv[2] ?? "check";
 
@@ -95,6 +98,7 @@ function simulationDates(checkNumber?: number): string[] {
 }
 
 async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): Promise<void> {
+  if (customersMode) return performCustomerServiceChecks(cycleCustomers ?? []);
   logger.info("Starting appointment check");
   const now = new Date();
   const previous = await loadState(config.statePath);
@@ -118,7 +122,7 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
     evaluateDateFilter("AVAILABLE", dates, range, dateFilter !== undefined).status === "AVAILABLE";
   const keepBrowserOpenMs = commandRuntime.keepBrowserOpenMs;
   const result = await runModeCheck(runtimeMode, simulation.status, {
-    real: () => checkOnce({ captureAvailabilityScreenshot, shouldCaptureAvailabilityScreenshot, keepBrowserOpenMs }),
+    real: () => checkOnce({ bookingUrl: config.url, captureAvailabilityScreenshot, shouldCaptureAvailabilityScreenshot, keepBrowserOpenMs }),
     simulated: status => checkOnce({
       captureAvailabilityScreenshot,
       shouldCaptureAvailabilityScreenshot,
@@ -144,52 +148,6 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
     })
   });
   const rawStatus = result.status;
-  if (customersMode) {
-    const customerState = await loadCustomersState(config.customerStatePath);
-    if (rawStatus === "AVAILABLE" || rawStatus === "NOT_AVAILABLE") {
-      logCustomerAvailability({
-        status: rawStatus,
-        appointmentDates: result.appointmentDates ?? [],
-        isSimulation: runtimeMode.kind === "simulation",
-        simulationCheckNumber: simulation.timelineCheckNumber,
-        log: {
-          info: message => logger.info(message),
-          error: message => logger.error(message)
-        }
-      });
-      const summary = await evaluateCustomers({
-        customers: cycleCustomers ?? [],
-        state: customerState,
-        status: rawStatus,
-        appointmentDates: result.appointmentDates ?? [],
-        now,
-        timezone: config.timezone,
-        url: config.url,
-        isSimulation: runtimeMode.kind === "simulation",
-        sender: {
-          send: async (draft, chatId) => customerNotifier!.notify(createNotification(draft), chatId)
-        },
-        log: {
-          info: message => logger.info(message),
-          error: message => logger.error(message)
-        }
-      });
-      logCustomerSummary(summary, {
-        info: message => logger.info(message),
-        error: message => logger.error(message)
-      });
-      await saveCustomersState(config.customerStatePath, customerState);
-    } else {
-      logger.error("Customer evaluation skipped because the appointment page did not load successfully");
-    }
-    await saveState(config.statePath, nextState(previous, rawStatus, now, false, {
-      rawStatus,
-      availableDates: result.appointmentDates ?? [],
-      matchingDates: []
-    }));
-    if (rawStatus === "PAGE_NOT_LOADED" || rawStatus === "ERROR") process.exitCode = 1;
-    return;
-  }
   const evaluation = evaluateDateFilter(rawStatus, result.appointmentDates ?? [], range, dateFilter !== undefined);
   const effectiveStatus = evaluation.status;
   logger.info(`Status: ${effectiveStatus}`, { rawStatus, reason: result.reason });
@@ -285,6 +243,79 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
     matchingDates: evaluation.matchingDates
   }));
   if (effectiveStatus === "PAGE_NOT_LOADED" || effectiveStatus === "ERROR") process.exitCode = 1;
+}
+
+function addSummary(total: CustomerEvaluationSummary, part: CustomerEvaluationSummary): void {
+  for (const key of Object.keys(total) as Array<keyof CustomerEvaluationSummary>) total[key] += part[key];
+}
+
+async function performCustomerServiceChecks(customers: readonly CustomerConfig[]): Promise<void> {
+  logger.info("Starting service-grouped customer appointment checks");
+  const now = new Date();
+  const isSimulation = runtimeMode.kind === "simulation";
+  const state = await loadCustomersState(config.customerStatePath);
+  const groups = groupActiveCustomersByService(customers, now, config.timezone);
+  const activeIds = new Set([...groups.values()].flat().map(customer => customer.id));
+  const inactiveCustomers = customers.filter(customer => !activeIds.has(customer.id));
+  const total: CustomerEvaluationSummary = {
+    evaluated: 0, expired: 0, disabled: 0, customersWithMatches: 0,
+    notificationsAttempted: 0, notificationsSent: 0, notificationsFailed: 0
+  };
+  const sender = {
+    send: async (draft: NotificationDraft, chatId: string) =>
+      customerNotifier!.notify(createNotification(draft), chatId)
+  };
+  const log = { info: (message: string) => logger.info(message), error: (message: string) => logger.error(message) };
+
+  if (inactiveCustomers.length > 0) {
+    addSummary(total, await evaluateCustomers({
+      customers: inactiveCustomers, state, status: "NOT_AVAILABLE", appointmentDates: [], now,
+      timezone: config.timezone, isSimulation, sender, log
+    }));
+  }
+
+  const simulation = isSimulation && groups.size > 0 ? await simulationController.next() : {};
+  const simulatedDates = simulationDates(simulation.timelineCheckNumber);
+  for (const [serviceId, serviceCustomers] of groups) {
+    const service = getAppointmentService(serviceId);
+    logger.info(`Checking ${serviceId} for ${serviceCustomers.length} active customers`);
+    const result = await runModeCheck(runtimeMode, simulation.status, {
+      real: () => checkOnce({ bookingUrl: service.bookingUrl, keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs }),
+      simulated: status => checkOnce({
+        simulatedStatus: status,
+        simulatedAppointmentDates: simulatedDates,
+        keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs,
+        simulationView: {
+          cycleNumber: simulation.timelineCheckNumber ?? 1,
+          previousStatus: null,
+          currentStatus: status,
+          notificationShouldSend: status === "AVAILABLE",
+          browserWouldOpen: false,
+          screenshotWouldBeTaken: false,
+          timestamp: now.toISOString(),
+          availableDates: simulatedDates,
+          activeFilter: "CUSTOMER-SPECIFIC",
+          countdownSeconds: 0
+        }
+      })
+    });
+    if (result.status !== "AVAILABLE" && result.status !== "NOT_AVAILABLE") {
+      logger.error(`Customer evaluation skipped for ${serviceId} because the appointment page did not load successfully`);
+      process.exitCode = 1;
+      continue;
+    }
+    logger.info(`Found ${(result.appointmentDates ?? []).length} available dates for ${serviceId}`);
+    logCustomerAvailability({
+      status: result.status, appointmentDates: result.appointmentDates ?? [], isSimulation,
+      simulationCheckNumber: simulation.timelineCheckNumber, log
+    });
+    addSummary(total, await evaluateCustomers({
+      customers: serviceCustomers, state, status: result.status, appointmentDates: result.appointmentDates ?? [],
+      now, timezone: config.timezone, isSimulation, sender, log
+    }));
+  }
+  logCustomerSummary(total, log);
+  await saveCustomersState(config.customerStatePath, state);
 }
 
 async function performCheck(): Promise<void> {
