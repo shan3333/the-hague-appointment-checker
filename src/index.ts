@@ -30,7 +30,7 @@ import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
 import { createNotification, type NotificationDraft } from "./notifications/Notification.js";
 import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
 import { logMonitoringRoundComplete, runWithReloadedCustomers } from "./customers/CustomerCycle.js";
-import { groupActiveCustomersByService } from "./customers/CustomerServiceGroups.js";
+import { forEachActiveServiceGroup, groupActiveCustomersByService } from "./customers/CustomerServiceGroups.js";
 import { getAppointmentService } from "./appointmentServices.js";
 import type { CustomerEvaluationSummary } from "./customers/CustomerMonitor.js";
 
@@ -271,46 +271,44 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
   const fixedSimulation = isSimulation && !scenarioRound && groups.size > 0
     ? await simulationController.next()
     : {};
-  for (const [serviceId, serviceCustomers] of groups) {
+  await forEachActiveServiceGroup(groups, async serviceId => {
     const service = getAppointmentService(serviceId);
-    logger.info(`Checking ${serviceId} for ${serviceCustomers.length} active customers`);
-    const result = scenarioRound
+    logger.info(`Checking ${serviceId} for ${groups.get(serviceId)?.length ?? 0} active customers`);
+    return scenarioRound
       ? scenarioRound.getAvailability(serviceId)
-      : await runModeCheck(runtimeMode, fixedSimulation.status, {
+      : runModeCheck(runtimeMode, fixedSimulation.status, {
         real: () => checkOnce({ bookingUrl: service.bookingUrl, keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs }),
         simulated: status => checkOnce({
-        simulatedStatus: status,
-        simulatedAppointmentDates: config.simulateAppointmentDates,
-        keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs,
-        simulationView: {
-          cycleNumber: 1,
-          previousStatus: null,
-          currentStatus: status,
-          notificationShouldSend: status === "AVAILABLE",
-          browserWouldOpen: false,
-          screenshotWouldBeTaken: false,
-          timestamp: now.toISOString(),
-          availableDates: config.simulateAppointmentDates,
-          activeFilter: "CUSTOMER-SPECIFIC",
-          countdownSeconds: 0
-        }
+          simulatedStatus: status,
+          simulatedAppointmentDates: config.simulateAppointmentDates,
+          keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs,
+          simulationView: {
+            cycleNumber: 1,
+            previousStatus: null,
+            currentStatus: status,
+            notificationShouldSend: status === "AVAILABLE",
+            browserWouldOpen: false,
+            screenshotWouldBeTaken: false,
+            timestamp: now.toISOString(),
+            availableDates: config.simulateAppointmentDates,
+            activeFilter: "CUSTOMER-SPECIFIC",
+            countdownSeconds: 0
+          }
         })
       });
+  }, async (serviceId, serviceCustomers, result) => {
     if (result.status !== "AVAILABLE" && result.status !== "NOT_AVAILABLE") {
       logger.error(`Customer evaluation skipped for ${serviceId} because the appointment page did not load successfully`);
       process.exitCode = 1;
-      continue;
+      return;
     }
     logger.info(`Found ${(result.appointmentDates ?? []).length} available dates for ${serviceId}`);
-    logCustomerAvailability({
-      status: result.status, appointmentDates: result.appointmentDates ?? [], isSimulation,
-      log
-    });
+    logCustomerAvailability({ status: result.status, appointmentDates: result.appointmentDates ?? [], isSimulation, log });
     addSummary(total, await evaluateCustomers({
       customers: serviceCustomers, state, status: result.status, appointmentDates: result.appointmentDates ?? [],
       now, timezone: config.timezone, isSimulation, sender, log
     }));
-  }
+  });
   logCustomerSummary(total, log);
   await saveCustomersState(config.customerStatePath, state);
   await scenarioRound?.complete();
