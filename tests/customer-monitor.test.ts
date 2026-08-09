@@ -11,9 +11,9 @@ import type { CustomersState } from "../src/customers/CustomerState.js";
 
 const now = new Date("2026-08-07T10:00:00.000Z");
 const customers: CustomerConfig[] = [
-  { id: "customer-a", chatId: "chat-a", enabled: true, filter: { kind: "before", date: "2026-09-01" }, expiresAt: "2026-08-07" },
-  { id: "customer-b", chatId: "chat-b", enabled: true, filter: { kind: "between", startDate: "2026-09-01", endDate: "2026-09-30" }, expiresAt: "2026-09-07" },
-  { id: "customer-c", chatId: "chat-c", enabled: true, filter: { kind: "before", date: "2026-08-10" }, expiresAt: "2026-09-07" }
+  { id: "customer-a", service: "brp_existing_bsn", chatId: "chat-a", enabled: true, filter: { kind: "before", date: "2026-09-01" }, expiresAt: "2026-08-07" },
+  { id: "customer-b", service: "brp_existing_bsn", chatId: "chat-b", enabled: true, filter: { kind: "between", startDate: "2026-09-01", endDate: "2026-09-30" }, expiresAt: "2026-09-07" },
+  { id: "customer-c", service: "brp_existing_bsn", chatId: "chat-c", enabled: true, filter: { kind: "before", date: "2026-08-10" }, expiresAt: "2026-09-07" }
 ];
 
 function setup(overrides: Partial<Parameters<typeof evaluateCustomers>[0]> = {}) {
@@ -30,7 +30,6 @@ function setup(overrides: Partial<Parameters<typeof evaluateCustomers>[0]> = {})
     appointmentDates: ["2026-08-20", "2026-09-10", "2026-10-05"],
     now,
     timezone: "Europe/Amsterdam",
-    url: "https://example.test/booking",
     isSimulation: true,
     sender,
     log: { info: message => messages.push(message), error: message => messages.push(message) },
@@ -40,6 +39,25 @@ function setup(overrides: Partial<Parameters<typeof evaluateCustomers>[0]> = {})
 }
 
 describe("multi-customer evaluation", () => {
+  it("uses the customer's service name and booking URL", async () => {
+    const context = setup({
+      customers: [{ ...customers[0]!, service: "brp_eu_eea_swiss_first_registration" }]
+    });
+    await evaluateCustomers(context.options);
+    expect(context.deliveries[0]?.notification.url).toBe("https://denhaag.mijnafspraakmaken.nl/?product=28");
+    expect(context.deliveries[0]?.notification.message).toContain("EU/EEA or Swiss citizen");
+    expect(context.deliveries[0]?.notification.url).not.toContain("product=35");
+  });
+
+  it("resets availability deduplication when the same customer ID changes service", async () => {
+    const context = setup({ customers: [customers[0]!] });
+    await evaluateCustomers(context.options);
+    context.options.customers = [{ ...customers[0]!, service: "brp_eu_eea_swiss_first_registration" }];
+    await evaluateCustomers(context.options);
+    expect(context.deliveries).toHaveLength(2);
+    expect(context.state.customers["customer-a"]?.service).toBe("brp_eu_eea_swiss_first_registration");
+  });
+
   it("serves all customers from one checker invocation", async () => {
     const checker = vi.fn().mockResolvedValue({
       status: "AVAILABLE" as const,
@@ -180,32 +198,25 @@ describe("multi-customer evaluation", () => {
     expect(output).toContain("  Notification: NOT NEEDED");
   });
 
-  it("clearly logs the dates belonging to the current simulation cycle", () => {
+  it("uses the same concise availability logging in simulation and real modes", () => {
     const context = setup();
     logCustomerAvailability({
       status: "AVAILABLE",
       appointmentDates: ["2026-08-12", "2026-08-25", "2026-09-10"],
       isSimulation: true,
-      simulationCheckNumber: 3,
       log: context.options.log
     });
     expect(context.messages).toEqual([
-      "----------------------------------------",
-      "Simulation check #3",
       "Raw status: AVAILABLE",
-      "Available appointment dates:",
-      "  2026-08-12",
-      "  2026-08-25",
-      "  2026-09-10",
-      "Total available appointment dates: 3",
-      "Evaluating customers...",
-      "----------------------------------------"
+      "Available appointment dates: 2026-08-12, 2026-08-25, 2026-09-10",
+      "Total available appointment dates: 3"
     ]);
   });
 
   it("reuses within-filter calendar arithmetic for customer matches", async () => {
     const within: CustomerConfig = {
       id: "within",
+      service: "brp_eu_eea_swiss_first_registration",
       chatId: "within-chat",
       enabled: true,
       filter: { kind: "within", amount: 1, unit: "m", source: "1m" },

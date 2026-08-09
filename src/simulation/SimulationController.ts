@@ -1,4 +1,4 @@
-import type { SimulatedStatus, TimelineSimulator } from "./TimelineSimulator.js";
+import type { SimulatedStatus } from "./TimelineSimulator.js";
 
 export interface SimulationSelection {
   status?: SimulatedStatus;
@@ -6,16 +6,9 @@ export interface SimulationSelection {
 }
 
 export class SimulationController {
-  constructor(
-    private readonly fixedStatus?: SimulatedStatus,
-    private readonly timeline?: TimelineSimulator
-  ) {}
+  constructor(private readonly fixedStatus?: SimulatedStatus) {}
 
   async next(): Promise<SimulationSelection> {
-    if (this.timeline) {
-      const result = await this.timeline.next();
-      return { status: result.status, timelineCheckNumber: result.checkNumber };
-    }
     return { status: this.fixedStatus };
   }
 }

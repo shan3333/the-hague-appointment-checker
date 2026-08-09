@@ -37,9 +37,9 @@ async function saveArtifacts(page: Page, prefix: string, html = false): Promise<
   return `${base}.png`;
 }
 
-async function reachCalendar(page: Page): Promise<void> {
+async function reachCalendar(page: Page, bookingUrl: string): Promise<void> {
   if (config.debugSlowMode) logger.info("Opening appointment page");
-  await page.goto(config.url, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs });
+  await page.goto(bookingUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs });
   await page.waitForLoadState("networkidle", { timeout: config.navigationTimeoutMs }).catch(() => undefined);
   const heading = page.locator(SELECTORS.flowHeading);
   await heading.waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
@@ -121,6 +121,7 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
 }
 
 export interface CheckOptions {
+  bookingUrl?: string;
   captureAvailabilityScreenshot?: boolean;
   shouldCaptureAvailabilityScreenshot?: (appointmentDates: readonly string[]) => boolean;
   simulatedStatus?: SimulatedStatus;
@@ -164,7 +165,8 @@ export async function checkOnce(options: CheckOptions = {}): Promise<CheckResult
         await renderSimulation(page, options.simulatedStatus, options.simulationView, options.simulatedAppointmentDates);
         logger.info("Simulated calendar loaded");
       } else {
-        await reachCalendar(page);
+        if (!options.bookingUrl) throw new Error("A booking URL is required for a real availability check");
+        await reachCalendar(page, options.bookingUrl);
         logger.info("Calendar loaded");
       }
       if (config.debugSlowMode) logger.info("Reading availability");

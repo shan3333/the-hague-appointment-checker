@@ -26,6 +26,8 @@ npm run check
 ```
 
 This performs one headless check against the real appointment website and exits.
+The legacy single-user commands monitor product 35. Multi-customer mode selects
+the booking target from each customer's required `service` field.
 On Windows PowerShell, replace the copy command with:
 
 ```powershell
@@ -60,7 +62,7 @@ The checked-in npm lockfile makes `npm ci` preferable in CI and clean checkouts.
 
 - `real` uses the municipality website.
 - `simulate-fixed` requires `SIMULATE_STATUS=AVAILABLE` or `NOT_AVAILABLE`.
-- `simulate-timeline` requires `SIMULATION_SEQUENCE`.
+- `simulate-timeline` loads the date-driven scenario selected by `SIMULATION_SCENARIO`.
 
 The npm commands below explicitly select their mode, so simulation settings in
 `.env` cannot change a real command into a simulated one. The removed legacy
@@ -73,7 +75,7 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run check` | One headless real-website check, then exit |
 | `npm run check:simulate` | One fixed simulated check using `SIMULATE_STATUS` |
 | `npm run monitor:real` | Repeated headless real checks inside the configured schedule |
-| `npm run monitor:simulate` | Headed local timeline simulation using `SIMULATION_SEQUENCE` |
+| `npm run monitor:simulate` | Local scenario simulation using service-specific rounds |
 | `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run help` | Print CLI commands without checking the website |
@@ -125,13 +127,23 @@ cycle that has a matching appointment. One-shot `check`, `debug`, and `debug:slo
 runs therefore also notify whenever they detect matching availability, even when
 the saved status and matching dates are unchanged.
 
+## Supported BRP services
+
+| Service ID | Appointment | Product |
+|---|---|---:|
+| `brp_existing_bsn` | Register again in BRP — existing BSN | 35 |
+| `brp_dutch_first_registration` | First BRP registration — Dutch citizen | 27 |
+| `brp_eu_eea_swiss_first_registration` | First BRP registration — EU/EEA/Swiss citizen | 28 |
+| `brp_residence_permit_first_registration` | First BRP registration — residence permit holder | 30 |
+
 ## Multi-customer monitoring MVP
 
-Multi-customer mode uses one Telegram bot and one website check for all configured
-customers. Each customer can use a separate private chat or Telegram group, date
-filter, and expiry date. The checker parses the available dates once, evaluates
-that same result for every active customer, and sends only the matching dates to
-that customer's chat.
+Multi-customer mode uses one Telegram bot. Each customer selects one supported
+service and can use a separate chat, date filter, and expiry date. Each cycle
+groups active customers by service, performs one website check per active service,
+parses its dates once, and reuses that result for every customer in that group.
+N customers across M active services therefore cause exactly M municipality
+checks (at most four), not N. Services with no active customers are not checked.
 
 Enable it explicitly with `--customers`:
 
@@ -160,6 +172,7 @@ next scheduled cycle.
 [
   {
     "id": "customer-001",
+    "service": "brp_eu_eea_swiss_first_registration",
     "chatId": "-1001111111111",
     "enabled": true,
     "filter": { "type": "before", "date": "2026-09-01" },
@@ -167,6 +180,7 @@ next scheduled cycle.
   },
   {
     "id": "customer-002",
+    "service": "brp_existing_bsn",
     "chatId": "-1002222222222",
     "enabled": true,
     "filter": { "type": "between", "start": "2026-09-01", "end": "2026-09-30" },
@@ -174,6 +188,7 @@ next scheduled cycle.
   },
   {
     "id": "customer-003",
+    "service": "brp_residence_permit_first_registration",
     "chatId": "-1003333333333",
     "enabled": true,
     "filter": { "type": "within", "value": "1m" },
@@ -182,9 +197,13 @@ next scheduled cycle.
 ]
 ```
 
-Required fields are `id`, `chatId`, `enabled`, `filter`, and `expiresAt`.
+Required fields are `id`, `service`, `chatId`, `enabled`, `filter`, and `expiresAt`.
 Customer IDs must be unique. Filters use the exact validation and inclusive date
 boundaries of `--before`, `--within`, and `--between`.
+
+`service` must be one of the four supported IDs above. Missing or unknown values
+fail validation and include the customer ID in the error. There is deliberately
+no fallback to product 35.
 
 `expiresAt` is an inclusive calendar date in `MONITOR_TIMEZONE` (Europe/Amsterdam
 by default). A customer remains active through 23:59:59 on that date and is
@@ -197,6 +216,7 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
 {
   "customers": {
     "customer-001": {
+      "service": "brp_eu_eea_swiss_first_registration",
       "lastMatchingDates": ["2026-08-20"],
       "lastCheckedAt": "2026-08-07T10:00:00.000Z",
       "lastNotifiedAt": "2026-08-07T10:00:00.000Z",
@@ -206,9 +226,11 @@ Multi-customer alerts use per-customer state in `data/customer-state.json`:
 }
 ```
 
-The first match sends an alert. An unchanged set of matching dates is suppressed;
+The first match sends an alert containing that service's official booking URL.
+An unchanged set of matching dates is suppressed;
 changed dates, a newly earlier date, or a match after a no-match cycle sends a new
-alert. State is independent between customers. A failed Telegram delivery for one
+alert. State is independent by customer and service, so changing a customer ID's
+service starts availability deduplication fresh. A failed Telegram delivery for one
 customer does not stop evaluation of the others and is retried on a later cycle.
 `npm run reset-state` resets this notification state without changing either
 customer configuration file.
@@ -227,6 +249,8 @@ Git. Override only the simulation path with `SIMULATION_CUSTOMERS_CONFIG_PATH`.
 If the required mode-specific file is missing, startup fails and names the exact
 file to create; there is deliberately no cross-mode fallback. The checked-in
 simulation example contains fake customer and Telegram chat IDs only.
+Keep only synthetic or dedicated test destinations in the local simulation file;
+never reuse real customer group IDs there.
 
 `--customers` cannot be combined with a CLI `--within`, `--before`, or `--between`
 filter. Without `--customers`, all existing single-user behavior remains unchanged,
@@ -264,13 +288,15 @@ so later cycles do not resend it. A failed delivery is logged, remains eligible
 for retry on a later cycle, and does not stop other customers from being
 processed. Customer configuration is never modified automatically.
 
-For timeline testing, align semicolon-separated date cycles with `SIMULATION_SEQUENCE`, then run:
+For timeline testing, define service availability by round in `config/simulation.json`, then run:
 
 ```bash
 npm run monitor:simulate -- --between 2026-08-15 2026-09-01
 ```
 
-For example, `SIMULATION_DATE_SEQUENCE=-;2026-08-10;2026-08-20,2026-08-25;2026-09-10` moves from no dates, to before-range availability, to two matches, and finally to after-range availability.
+Each round contains a `services` object whose keys are supported service IDs and
+whose values are arrays of ISO dates. Empty or omitted service arrays mean
+`NOT_AVAILABLE`; non-empty arrays mean `AVAILABLE`.
 
 ## Configuration
 
@@ -326,12 +352,11 @@ treated as having no matching appointment.
 ### Timeline simulation
 
 ```dotenv
-SIMULATION_SEQUENCE=NOT_AVAILABLE,AVAILABLE,AVAILABLE,NOT_AVAILABLE
+SIMULATION_SCENARIO=config/simulation.json
 SIMULATION_REPEAT=true
 SIMULATION_INTERVAL_SECONDS=5
 SIMULATION_KEEP_BROWSER_OPEN_MS=30000
 SIMULATION_PAUSE_BEFORE_CLOSE=false
-SIMULATION_DATE_SEQUENCE=2026-09-10;2026-08-10,2026-08-12;-
 ```
 
 ```bash
@@ -339,21 +364,19 @@ npm run reset-state
 npm run monitor:simulate
 ```
 
-Timeline simulation uses `page.setContent()` to show a local dashboard. It
-displays the cycle number, previous status, current status, expected notification,
-browser and screenshot behaviour, timestamp, and countdown. AVAILABLE is green;
-NOT_AVAILABLE is red. The Playwright simulation never navigates to the target
-website for detection. If `ENABLE_OPEN_BROWSER=true`, the normal alert pipeline
-can still deliberately open the appointment URL after an AVAILABLE result; set it
-to `false` for a fully offline simulation.
+Timeline customer simulation reads `config/simulation.json` and never navigates
+to the municipality website. All active services use the same round; the round
+advances once only after every service group and customer has been evaluated.
+Multiple customers sharing a service receive the same raw date list and retain
+their independent production date-filter evaluation.
 
 The dashboard remains open for `SIMULATION_KEEP_BROWSER_OPEN_MS`. With
 `SIMULATION_PAUSE_BEFORE_CLOSE=true`, an interactive run also waits for Enter.
-The sequence index is stored locally and `npm run reset-state` resets it.
-`SIMULATION_DATE_SEQUENCE` aligns date data with timeline checks: semicolons
-separate cycles, commas separate multiple dates in one cycle, and `-` means no
-dates. Existing status-only timelines still work. If the date sequence is absent,
-`SIMULATE_APPOINTMENT_DATES` is used as a fallback.
+The scenario round index is stored locally and `npm run reset-state` resets it.
+`SIMULATION_REPEAT=true` wraps to the first round after the last. When false, the
+final round is reused. `SIMULATION_SEQUENCE` and `SIMULATION_DATE_SEQUENCE` are no
+longer used and can be removed from existing `.env` files. Fixed one-shot
+simulation continues to use `SIMULATE_STATUS` and `SIMULATE_APPOINTMENT_DATES`.
 
 ## Notifications and availability actions
 

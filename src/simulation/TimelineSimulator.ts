@@ -15,12 +15,6 @@ export interface TimelineStateStore {
   reset(): Promise<void>;
 }
 
-export interface TimelineResult {
-  status: SimulatedStatus;
-  checkNumber: number;
-  sequenceIndex: number;
-}
-
 const initialTimelineState: TimelineState = { nextIndex: 0, totalChecks: 0 };
 
 export class FileTimelineStateStore implements TimelineStateStore {
@@ -48,35 +42,5 @@ export class FileTimelineStateStore implements TimelineStateStore {
 
   async reset(): Promise<void> {
     await this.save({ ...initialTimelineState });
-  }
-}
-
-export class TimelineSimulator {
-  constructor(
-    private readonly sequence: readonly SimulatedStatus[],
-    private readonly repeat: boolean,
-    private readonly store: TimelineStateStore
-  ) {
-    if (sequence.length === 0) throw new Error("Simulation timeline sequence cannot be empty");
-  }
-
-  async next(): Promise<TimelineResult> {
-    const state = await this.store.load();
-    const sequenceIndex = Math.min(state.nextIndex, this.sequence.length - 1);
-    const status = this.sequence[sequenceIndex]!;
-    const nextIndex = this.repeat
-      ? (sequenceIndex + 1) % this.sequence.length
-      : Math.min(sequenceIndex + 1, this.sequence.length - 1);
-    const result = {
-      status,
-      checkNumber: state.totalChecks + 1,
-      sequenceIndex
-    };
-    await this.store.save({ nextIndex, totalChecks: result.checkNumber });
-    return result;
-  }
-
-  reset(): Promise<void> {
-    return this.store.reset();
   }
 }

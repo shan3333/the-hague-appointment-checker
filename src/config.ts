@@ -3,6 +3,7 @@ import path from "node:path";
 import type { NotificationProviderSetting } from "./notifications/NotificationProvider.js";
 import { parseDateOnly } from "./dateFilter.js";
 import { parseTelegramConfig } from "./notifications/TelegramConfig.js";
+import { APPOINTMENT_SERVICES } from "./appointmentServices.js";
 
 if (process.env.SIMULATION_MODE !== undefined) {
   throw new Error("SIMULATION_MODE was removed; use APPOINTMENT_MODE=simulate-timeline instead");
@@ -49,17 +50,6 @@ const rawSimulateStatus = process.env.SIMULATE_STATUS?.trim().toUpperCase();
 if (appointmentMode === "simulate-fixed" && rawSimulateStatus !== "AVAILABLE" && rawSimulateStatus !== "NOT_AVAILABLE") {
   throw new Error("APPOINTMENT_MODE=simulate-fixed requires SIMULATE_STATUS=AVAILABLE or NOT_AVAILABLE");
 }
-const simulationSequence = (process.env.SIMULATION_SEQUENCE ?? "")
-  .split(",")
-  .map(value => value.trim().toUpperCase())
-  .filter(Boolean);
-if (appointmentMode === "simulate-timeline") {
-  if (simulationSequence.length === 0) throw new Error("SIMULATION_SEQUENCE is required in timeline mode");
-  if (simulationSequence.some(status => status !== "AVAILABLE" && status !== "NOT_AVAILABLE")) {
-    throw new Error("SIMULATION_SEQUENCE may contain only AVAILABLE and NOT_AVAILABLE");
-  }
-}
-
 function appointmentDates(name: string, raw: string | undefined): string[] {
   const dates = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
   const invalid = dates.find(date => !parseDateOnly(date));
@@ -68,13 +58,6 @@ function appointmentDates(name: string, raw: string | undefined): string[] {
 }
 
 const simulateAppointmentDates = appointmentDates("SIMULATE_APPOINTMENT_DATES", process.env.SIMULATE_APPOINTMENT_DATES);
-const simulationDateSequence = (process.env.SIMULATION_DATE_SEQUENCE ?? "")
-  .split(";")
-  .filter(value => value.length > 0)
-  .map((value, index) => value.trim() === "-"
-    ? []
-    : appointmentDates(`SIMULATION_DATE_SEQUENCE cycle ${index + 1}`, value));
-
 const notificationProvider = (process.env.NOTIFICATION_PROVIDER?.trim().toLowerCase() || "auto") as NotificationProviderSetting;
 const notificationProviders: NotificationProviderSetting[] = ["auto", "telegram", "email", "discord", "slack"];
 if (!notificationProviders.includes(notificationProvider)) {
@@ -82,13 +65,12 @@ if (!notificationProviders.includes(notificationProvider)) {
 }
 
 export const config = {
-  url: process.env.APPOINTMENT_URL ?? "https://denhaag.mijnafspraakmaken.nl/?product=35",
+  url: APPOINTMENT_SERVICES.brp_existing_bsn.bookingUrl,
   appointmentMode,
   simulateStatus: rawSimulateStatus as "AVAILABLE" | "NOT_AVAILABLE" | undefined,
-  simulationSequence: simulationSequence as Array<"AVAILABLE" | "NOT_AVAILABLE">,
   simulationRepeat: boolean("SIMULATION_REPEAT", true),
   simulateAppointmentDates,
-  simulationDateSequence,
+  simulationScenarioPath: path.resolve(process.env.SIMULATION_SCENARIO ?? "config/simulation.json"),
   checkIntervalMinutes: number("CHECK_INTERVAL_MINUTES", 5, 0.1),
   simulationIntervalSeconds: number("SIMULATION_INTERVAL_SECONDS", 5, 0.1),
   simulationKeepBrowserOpenMs: number("SIMULATION_KEEP_BROWSER_OPEN_MS", 30_000),

@@ -10,8 +10,7 @@ describe("runtime mode isolation", () => {
     const real = vi.fn().mockResolvedValue(realResult);
     const simulated = vi.fn().mockResolvedValue(simulatedResult);
     const mode = resolveRuntimeMode({
-      appointmentMode: "simulate-timeline",
-      simulationSequence: ["NOT_AVAILABLE", "AVAILABLE"]
+      appointmentMode: "simulate-timeline"
     });
 
     await expect(runModeCheck(mode, "AVAILABLE", { real, simulated })).resolves.toBe(simulatedResult);
@@ -24,8 +23,7 @@ describe("runtime mode isolation", () => {
     const simulated = vi.fn().mockResolvedValue(simulatedResult);
     const mode = resolveRuntimeMode({
       appointmentMode: "real",
-      simulateStatus: "AVAILABLE",
-      simulationSequence: ["AVAILABLE"]
+      simulateStatus: "AVAILABLE"
     });
 
     await expect(runModeCheck(mode, undefined, { real, simulated })).resolves.toBe(realResult);
@@ -35,20 +33,18 @@ describe("runtime mode isolation", () => {
 
   it("requires a fixed status in simulate-fixed mode", () => {
     expect(() => resolveRuntimeMode({
-      appointmentMode: "simulate-fixed",
-      simulationSequence: []
+      appointmentMode: "simulate-fixed"
     })).toThrow(/requires SIMULATE_STATUS/);
   });
 
-  it("requires a sequence in simulate-timeline mode", () => {
-    expect(() => resolveRuntimeMode({
-      appointmentMode: "simulate-timeline",
-      simulationSequence: []
-    })).toThrow(/requires SIMULATION_SEQUENCE/);
+  it("uses scenario-backed timeline mode without an env sequence", () => {
+    expect(resolveRuntimeMode({ appointmentMode: "simulate-timeline" })).toEqual({
+      kind: "simulation", type: "timeline"
+    });
   });
 
   it("requires an authoritative mode", () => {
-    expect(() => resolveRuntimeMode({ simulationSequence: [] })).toThrow(/APPOINTMENT_MODE is required/);
+    expect(() => resolveRuntimeMode({})).toThrow(/APPOINTMENT_MODE is required/);
   });
 
   it("fixed simulation runs exactly once per invocation", async () => {
@@ -56,8 +52,7 @@ describe("runtime mode isolation", () => {
     const simulated = vi.fn().mockResolvedValue(simulatedResult);
     const mode = resolveRuntimeMode({
       appointmentMode: "simulate-fixed",
-      simulateStatus: "AVAILABLE",
-      simulationSequence: []
+      simulateStatus: "AVAILABLE"
     });
     expect(mode.kind).toBe("simulation");
     await runModeCheck(mode, "AVAILABLE", { real, simulated });

@@ -4,6 +4,7 @@ import type { AppointmentStatus } from "../types.js";
 import type { CustomerConfig } from "./CustomerConfig.js";
 import { matchingDatesDiffer, type CustomersState } from "./CustomerState.js";
 import { expiryNotification, isCustomerExpired } from "./CustomerLifecycle.js";
+import { getAppointmentService } from "../appointmentServices.js";
 
 export interface CustomerNotificationSender {
   send(notification: NotificationDraft, chatId: string): Promise<void>;
@@ -32,22 +33,9 @@ export function logCustomerAvailability(options: {
   status: AppointmentStatus;
   appointmentDates: readonly string[];
   isSimulation: boolean;
-  simulationCheckNumber?: number;
   log: CustomerLog;
 }): void {
-  const { status, appointmentDates, isSimulation, simulationCheckNumber, log } = options;
-  if (isSimulation) {
-    log.info("----------------------------------------");
-    log.info(`Simulation check #${simulationCheckNumber ?? 1}`);
-    log.info(`Raw status: ${status}`);
-    log.info("Available appointment dates:");
-    if (appointmentDates.length === 0) log.info("  NONE");
-    else for (const date of appointmentDates) log.info(`  ${date}`);
-    log.info(`Total available appointment dates: ${appointmentDates.length}`);
-    log.info("Evaluating customers...");
-    log.info("----------------------------------------");
-    return;
-  }
+  const { status, appointmentDates, log } = options;
   log.info(`Raw status: ${status}`);
   log.info(`Available appointment dates: ${dates(appointmentDates)}`);
   log.info(`Total available appointment dates: ${appointmentDates.length}`);
@@ -69,12 +57,11 @@ export async function evaluateCustomers(options: {
   appointmentDates: readonly string[];
   now: Date;
   timezone: string;
-  url: string;
   isSimulation: boolean;
   sender: CustomerNotificationSender;
   log: CustomerLog;
 }): Promise<CustomerEvaluationSummary> {
-  const { customers, state, status, appointmentDates, now, timezone, url, isSimulation, sender, log } = options;
+  const { customers, state, status, appointmentDates, now, timezone, isSimulation, sender, log } = options;
   let evaluated = 0;
   let expired = 0;
   let disabled = 0;
@@ -88,13 +75,19 @@ export async function evaluateCustomers(options: {
       disabled += 1;
       continue;
     }
-    const previous = state.customers[customer.id] ?? {
+    const stored = state.customers[customer.id];
+    // Legacy state predates service IDs and could only have come from product 35.
+    const previous = stored?.service === customer.service ||
+      (stored?.service === undefined && customer.service === "brp_existing_bsn") ? stored : undefined;
+    const effectivePrevious = previous ?? {
       lastMatchingDates: [], lastCheckedAt: null, lastNotifiedAt: null, expiryNotificationSent: false
     };
     if (isCustomerExpired(customer, now, timezone)) {
+      // Expiry delivery is per customer lifecycle, independent of appointment service.
+      const lifecyclePrevious = stored ?? effectivePrevious;
       expired += 1;
       log.info(`Customer ${customer.id} monitoring expired.`);
-      let expirySent = previous.expiryNotificationSent ?? false;
+      let expirySent = lifecyclePrevious.expiryNotificationSent ?? false;
       if (!expirySent) {
         notificationsAttempted += 1;
         try {
@@ -111,9 +104,10 @@ export async function evaluateCustomers(options: {
         log.info("  Expiry notification: ALREADY SENT");
       }
       state.customers[customer.id] = {
-        lastMatchingDates: previous.lastMatchingDates,
+        service: customer.service,
+        lastMatchingDates: lifecyclePrevious.lastMatchingDates,
         lastCheckedAt: now.toISOString(),
-        lastNotifiedAt: expirySent && !previous.expiryNotificationSent ? now.toISOString() : previous.lastNotifiedAt,
+        lastNotifiedAt: expirySent && !lifecyclePrevious.expiryNotificationSent ? now.toISOString() : lifecyclePrevious.lastNotifiedAt,
         expiryNotificationSent: expirySent
       };
       continue;
@@ -123,14 +117,14 @@ export async function evaluateCustomers(options: {
     const evaluation = evaluateDateFilter(status, appointmentDates, range, true);
     const matchingDates = evaluation.matchingDates;
     if (matchingDates.length > 0) customersWithMatches += 1;
-    const changed = matchingDatesDiffer(previous.lastMatchingDates, matchingDates);
+    const changed = matchingDatesDiffer(effectivePrevious.lastMatchingDates, matchingDates);
     const shouldSend = matchingDates.length > 0 && changed;
     log.info(`Customer ${customer.id}`);
     log.info(`  Filter: ${describeDateFilter(customer.filter)}`);
     log.info(`  Matching dates: ${dates(matchingDates)}`);
     log.info(`  Rejected dates: ${dates(evaluation.rejectedDates)}`);
     log.info(`  Earliest matching date: ${matchingDates[0] ?? "NONE"}`);
-    log.info(`  Previous matching dates: ${dates(previous.lastMatchingDates)}`);
+    log.info(`  Previous matching dates: ${dates(effectivePrevious.lastMatchingDates)}`);
     log.info(`  Matching dates changed: ${changed}`);
     let sent = false;
     if (shouldSend) {
@@ -139,18 +133,20 @@ export async function evaluateCustomers(options: {
       const simulationNotice = isSimulation
         ? "This is a simulated appointment notification. No real appointment website was checked. No booking was attempted.\n\n"
         : "";
+      const service = getAppointmentService(customer.service);
       try {
         await sender.send({
           title: isSimulation ? "🧪 Simulation: The Hague Appointment Available" : "The Hague appointment detected",
-          message: `${simulationNotice}Earliest matching date:\n${matchingDates[0]}\n\nYour monitoring preference:\n${filter}\n\nA matching appointment was available when we checked.\n\nAvailability can change quickly. This alert does not reserve an appointment.`,
+          message: `${simulationNotice}Appointment type:\n${service.name}\n\nEarliest matching date:\n${matchingDates[0]}\n\nYour monitoring preference:\n${filter}\n\nA matching appointment was available when we checked.\n\nAvailability can change quickly. This alert does not reserve an appointment.`,
           isSimulation,
-          url,
+          url: service.bookingUrl,
           timestamp: now,
           metadata: {
             earliestMatchingDate: matchingDates[0]!,
             matchingAppointmentCount: matchingDates.length,
             filter,
-            timezone
+            timezone,
+            serviceId: service.id
           }
         }, customer.chatId);
         notificationsSent += 1;
@@ -165,10 +161,11 @@ export async function evaluateCustomers(options: {
       log.info("  Notification: NOT NEEDED");
     }
     state.customers[customer.id] = {
-      lastMatchingDates: shouldSend && !sent ? previous.lastMatchingDates : [...matchingDates],
+      service: customer.service,
+      lastMatchingDates: shouldSend && !sent ? effectivePrevious.lastMatchingDates : [...matchingDates],
       lastCheckedAt: now.toISOString(),
-      lastNotifiedAt: sent ? now.toISOString() : previous.lastNotifiedAt,
-      expiryNotificationSent: previous.expiryNotificationSent ?? false
+      lastNotifiedAt: sent ? now.toISOString() : effectivePrevious.lastNotifiedAt,
+      expiryNotificationSent: effectivePrevious.expiryNotificationSent ?? false
     };
   }
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runWithReloadedCustomers } from "../src/customers/CustomerCycle.js";
+import { logMonitoringRoundComplete, runWithReloadedCustomers } from "../src/customers/CustomerCycle.js";
 import { evaluateCustomers } from "../src/customers/CustomerMonitor.js";
 import type { CustomerConfig } from "../src/customers/CustomerConfig.js";
 import type { CustomersState } from "../src/customers/CustomerState.js";
@@ -10,6 +10,7 @@ const now = new Date("2026-08-07T10:00:00.000Z");
 function customer(overrides: Partial<CustomerConfig> = {}): CustomerConfig {
   return {
     id: "customer-a",
+    service: "brp_existing_bsn",
     chatId: "chat-a",
     enabled: true,
     filter: { kind: "before", date: "2026-09-01" },
@@ -41,7 +42,6 @@ function harness() {
       appointmentDates: result.appointmentDates,
       now,
       timezone: "Europe/Amsterdam",
-      url: "https://example.test/booking",
       isSimulation: true,
       sender,
       log
@@ -51,6 +51,11 @@ function harness() {
 }
 
 describe("per-cycle customer configuration reload", () => {
+  it("logs exactly one divider when a complete monitoring round finishes", () => {
+    const messages: string[] = [];
+    logMonitoringRoundComplete({ info: message => messages.push(message), error: message => messages.push(message) });
+    expect(messages).toEqual(["----------------------------------------"]);
+  });
   it("loads on every cycle and picks up a newly added customer", async () => {
     const context = harness();
     const configurations = [[customer()], [customer(), customer({ id: "customer-b", chatId: "chat-b" })]];

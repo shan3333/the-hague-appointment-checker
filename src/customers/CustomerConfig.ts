@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parseDateFilterArgs, parseDateOnly, type DateFilter } from "../dateFilter.js";
+import { isAppointmentServiceId, type AppointmentServiceId } from "../appointmentServices.js";
 
 export type CustomerConfigurationMode = "real" | "simulation";
 
@@ -17,6 +18,7 @@ export function resolveCustomersConfigPath(
 
 export interface CustomerConfig {
   id: string;
+  service: AppointmentServiceId;
   chatId: string;
   enabled: boolean;
   filter: DateFilter;
@@ -64,12 +66,17 @@ export function parseCustomers(value: unknown): CustomerConfig[] {
     const id = requiredString(entry, "id", identity);
     if (ids.has(id)) throw new Error(`Duplicate customer id: ${id}`);
     ids.add(id);
+    const service = requiredString(entry, "service", `Customer ${id}`);
+    if (!isAppointmentServiceId(service)) {
+      throw new Error(`Customer "${id}" has unsupported service "${service}"`);
+    }
     if (typeof entry.enabled !== "boolean") throw new Error(`Customer ${id}: enabled must be true or false`);
     const chatId = requiredString(entry, "chatId", `Customer ${id}`);
     const expiresAt = requiredString(entry, "expiresAt", `Customer ${id}`);
     if (!parseDateOnly(expiresAt)) throw new Error(`Customer ${id}: expiresAt must be a valid YYYY-MM-DD date`);
     return {
       id,
+      service,
       chatId,
       enabled: entry.enabled,
       filter: parseCustomerFilter(entry.filter, `Customer ${id}`),

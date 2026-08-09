@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { describeDateFilter } from "../dateFilter.js";
+import { getAppointmentService } from "../appointmentServices.js";
 import type { NotificationDraft } from "../notifications/Notification.js";
 import {
   loadCustomers,
@@ -44,11 +45,13 @@ export function activationNotification(
   const simulationNotice = isSimulation
     ? "This is a SIMULATION lifecycle notification. No real customer configuration was used.\n\n"
     : "";
+  const service = getAppointmentService(customer.service);
   return {
     title: isSimulation ? "🧪 Simulation: Appointment monitoring is active" : "✅ Appointment monitoring is active",
-    message: `${simulationNotice}Location: The Hague\nPreference: ${describeDateFilter(customer.filter)}\nMonitoring until: ${displayDate(customer.expiresAt, timezone)}\n\nWe'll send an alert here when matching appointment availability is detected.\n\nAvailability is monitored only. Appointments are not reserved or guaranteed.`,
+    message: `${simulationNotice}Location: The Hague\nAppointment: ${service.name}\nPreference: ${describeDateFilter(customer.filter)}\nMonitoring until: ${displayDate(customer.expiresAt, timezone)}\n\nWe'll send an alert here when matching appointment availability is detected.\n\nAvailability is monitored only. Appointments are not reserved or guaranteed.`,
     isSimulation,
-    metadata: { timezone, lifecycle: "activation" }
+    url: service.bookingUrl,
+    metadata: { timezone, lifecycle: "activation", serviceId: service.id }
   };
 }
 
