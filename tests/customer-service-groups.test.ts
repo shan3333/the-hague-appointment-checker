@@ -47,4 +47,24 @@ describe("customer service grouping", () => {
       { serviceId: "brp_existing_bsn", customerIds: ["c"] }
     ]);
   });
+
+  it("never runs more than one service check at a time", async () => {
+    const groups = groupActiveCustomersByService([
+      base,
+      { ...base, id: "b", service: "brp_existing_bsn" },
+      { ...base, id: "c", service: "brp_dutch_first_registration" }
+    ], now, "Europe/Amsterdam");
+    let activeChecks = 0;
+    let maximumActiveChecks = 0;
+    const check = vi.fn(async (serviceId: AppointmentServiceId) => {
+      activeChecks += 1;
+      maximumActiveChecks = Math.max(maximumActiveChecks, activeChecks);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      activeChecks -= 1;
+      return serviceId;
+    });
+    await forEachActiveServiceGroup(groups, check, async () => undefined);
+    expect(check).toHaveBeenCalledTimes(3);
+    expect(maximumActiveChecks).toBe(1);
+  });
 });
