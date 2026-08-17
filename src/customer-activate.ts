@@ -3,6 +3,7 @@ import { logger } from "./logger.js";
 import { createNotification } from "./notifications/Notification.js";
 import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
 import { activateCustomer, loadLifecycleCustomers } from "./customers/CustomerLifecycle.js";
+import { updateCustomersState } from "./customers/CustomerState.js";
 
 const customerId = process.argv[2]?.trim();
 if (!customerId) throw new Error("Customer ID is required. Example: npm run customer:activate -- customer-001");
@@ -26,6 +27,21 @@ try {
       info: message => logger.info(message),
       error: message => logger.error(message)
     }
+  });
+  const statePath = mode === "real" ? config.customerStatePath : config.simulationCustomerStatePath;
+  await updateCustomersState(statePath, state => {
+    const previous = state.customers[customerId];
+    state.customers[customerId] = {
+      ...previous,
+      status: "active",
+      activatedAt: new Date().toISOString(),
+      bookedAt: null,
+      lastMatchingDates: previous?.lastMatchingDates ?? [],
+      lastCheckedAt: previous?.lastCheckedAt ?? null,
+      lastNotifiedAt: previous?.lastNotifiedAt ?? null,
+      expiryNotificationSent: previous?.expiryNotificationSent ?? false,
+      alerts: previous?.alerts ?? []
+    };
   });
 } catch {
   process.exitCode = 1;

@@ -84,6 +84,7 @@ export const config = {
   notificationProvider,
   telegram: parseTelegramConfig(process.env),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "",
+  telegramChatId: process.env.TELEGRAM_CHAT_ID?.trim() ?? "",
   enableOpenBrowser: boolean("ENABLE_OPEN_BROWSER", true),
   enableScreenshot: boolean("ENABLE_SCREENSHOT", true),
   debugScreenshots: boolean("DEBUG_SCREENSHOTS", false),
@@ -99,6 +100,8 @@ export const config = {
   statePath: path.resolve("data/state.json"),
   simulationStatePath: path.resolve("data/simulation-state.json"),
   customerStatePath: path.resolve("data/customer-state.json"),
+  simulationCustomerStatePath: path.resolve("data/simulation-customer-state.json"),
+  testNotificationStatePath: path.resolve("data/test-notification-state.json"),
   customersConfigPaths: {
     real: path.resolve(process.env.CUSTOMERS_CONFIG_PATH ?? "config/customers.json"),
     simulation: path.resolve(process.env.SIMULATION_CUSTOMERS_CONFIG_PATH ?? "config/customers.simulation.json")

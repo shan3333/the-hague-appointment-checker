@@ -1,15 +1,17 @@
 import type { AppointmentServiceId } from "../appointmentServices.js";
 import type { CustomerConfig } from "./CustomerConfig.js";
 import { isCustomerExpired } from "./CustomerLifecycle.js";
+import { customerStatus, type CustomersState } from "./CustomerState.js";
 
 export function groupActiveCustomersByService(
   customers: readonly CustomerConfig[],
   now: Date,
-  timezone: string
+  timezone: string,
+  state?: CustomersState
 ): Map<AppointmentServiceId, CustomerConfig[]> {
   const groups = new Map<AppointmentServiceId, CustomerConfig[]>();
   for (const customer of customers) {
-    if (!customer.enabled || isCustomerExpired(customer, now, timezone)) continue;
+    if (!customer.enabled || isCustomerExpired(customer, now, timezone) || customerStatus(state?.customers[customer.id]) === "booked") continue;
     const group = groups.get(customer.service) ?? [];
     group.push(customer);
     groups.set(customer.service, group);

@@ -7,10 +7,13 @@ Usage:
   npm run monitor:simulate   Run the local timeline simulator
   npm run customer:activate -- <id>            Send a real customer activation confirmation
   npm run customer:activate:simulate -- <id>   Send a simulation-customer activation test
+  npm run telegram:listen                       Listen for real customer feedback buttons
   npm run debug              Visible one-shot inspection at normal speed
   npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open
   npm run test-notification  Test enabled desktop and Telegram notifications
-  npm run reset-state        Reset appointment, simulation, and customer state
+  npm run reset-state              Reset simulation and test-notification state
+  npm run reset-state:simulation   Reset simulation state only
+  npm run reset-state:test         Reset test-notification state only
   npm run typecheck          Validate TypeScript
   npm test                   Run unit tests
   npm run build              Build production JavaScript`);

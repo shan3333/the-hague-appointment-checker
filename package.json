@@ -32,6 +32,7 @@
     "monitor:simulate": "cross-env APPOINTMENT_MODE=simulate-timeline HEADLESS=true tsx src/index.ts monitor",
     "customer:activate": "cross-env APPOINTMENT_MODE=real tsx src/customer-activate.ts",
     "customer:activate:simulate": "cross-env APPOINTMENT_MODE=simulate-fixed SIMULATE_STATUS=NOT_AVAILABLE tsx src/customer-activate.ts",
+    "telegram:listen": "cross-env APPOINTMENT_MODE=real tsx src/telegram-listener.ts",
     "debug": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SLOW_MODE=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
     "debug:slow": "cross-env APPOINTMENT_MODE=real DEBUG_SLOW_MODE=true HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
     "debug:foreign-documents": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/debug-service.ts",
@@ -41,7 +42,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test-notification": "tsx src/test-notification.ts",
-    "reset-state": "tsx src/reset-state.ts",
+    "reset-state": "tsx src/reset-state.ts safe",
+    "reset-state:simulation": "tsx src/reset-state.ts simulation",
+    "reset-state:test": "tsx src/reset-state.ts test",
     "prepack": "npm run build"
   },
   "dependencies": {

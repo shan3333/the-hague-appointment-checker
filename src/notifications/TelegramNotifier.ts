@@ -39,6 +39,18 @@ export function formatTelegramMessage(notification: Notification): string {
   return lines.join("\n");
 }
 
+export function telegramReplyMarkup(notification: Notification): object | undefined {
+  const customerKey = notification.metadata.telegramCustomerKey;
+  const alertId = notification.metadata.alertId;
+  if (notification.isSimulation || typeof customerKey !== "string" || typeof alertId !== "string") return undefined;
+  return {
+    inline_keyboard: [[
+      { text: "✅ I booked it", callback_data: `b:${customerKey}:${alertId}` },
+      { text: "❌ Keep looking", callback_data: `n:${customerKey}:${alertId}` }
+    ]]
+  };
+}
+
 export class TelegramNotifier implements NotificationProvider {
   readonly name = "telegram";
 
@@ -53,6 +65,7 @@ export class TelegramNotifier implements NotificationProvider {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const replyMarkup = telegramReplyMarkup(notification);
       const response = await this.fetchFn(
         `https://api.telegram.org/bot${this.botToken}/sendMessage`,
         {
@@ -61,12 +74,18 @@ export class TelegramNotifier implements NotificationProvider {
           body: JSON.stringify({
             chat_id: chatId,
             text: formatTelegramMessage(notification),
-            disable_web_page_preview: false
+            disable_web_page_preview: false,
+            ...(replyMarkup ? { reply_markup: replyMarkup } : {})
           }),
           signal: controller.signal
         }
       );
-      if (!response.ok) throw new Error(`Telegram HTTP error ${response.status}`);
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(
+          `Telegram HTTP error ${response.status}: ${body}`
+        );
+      }
       let payload: TelegramResponse;
       try {
         payload = await response.json() as TelegramResponse;

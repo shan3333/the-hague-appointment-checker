@@ -4,7 +4,9 @@ import type { AppointmentAvailability, AppointmentStatus } from "../types.js";
 import type { CustomerConfig } from "./CustomerConfig.js";
 import { matchingDatesDiffer, type CustomersState } from "./CustomerState.js";
 import { expiryNotification, isCustomerExpired } from "./CustomerLifecycle.js";
-import { getAppointmentService } from "../appointmentServices.js";
+import { customerStatus, type CustomerNotificationState } from "./CustomerState.js";
+import { buildCustomerAppointmentAlert } from "./CustomerAppointmentAlert.js";
+import { createAlertId } from "./CustomerAlertIdentity.js";
 
 export interface CustomerNotificationSender {
   send(notification: NotificationDraft, chatId: string): Promise<void>;
@@ -27,6 +29,20 @@ export interface CustomerEvaluationSummary {
 
 function dates(values: readonly string[]): string {
   return values.join(", ") || "NONE";
+}
+
+function notificationState(previous: CustomerNotificationState | undefined, values: Partial<CustomerNotificationState>): CustomerNotificationState {
+  return {
+    service: values.service ?? previous?.service,
+    status: values.status ?? previous?.status ?? "active",
+    activatedAt: values.activatedAt ?? previous?.activatedAt ?? null,
+    bookedAt: values.bookedAt ?? previous?.bookedAt ?? null,
+    lastMatchingDates: values.lastMatchingDates ?? previous?.lastMatchingDates ?? [],
+    lastCheckedAt: values.lastCheckedAt ?? previous?.lastCheckedAt ?? null,
+    lastNotifiedAt: values.lastNotifiedAt ?? previous?.lastNotifiedAt ?? null,
+    expiryNotificationSent: values.expiryNotificationSent ?? previous?.expiryNotificationSent ?? false,
+    alerts: values.alerts ?? previous?.alerts ?? []
+  };
 }
 
 export function logCustomerAvailability(options: {
@@ -75,9 +91,16 @@ export async function evaluateCustomers(options: {
   for (const customer of customers) {
     if (!customer.enabled) {
       disabled += 1;
+      if (customerStatus(state.customers[customer.id]) === "active") {
+        state.customers[customer.id] = notificationState(state.customers[customer.id], { status: "stopped" });
+      }
       continue;
     }
     const stored = state.customers[customer.id];
+    if (customerStatus(stored) === "booked") {
+      log.info(`[MONITOR] ${customer.id} skipped: status=${customerStatus(stored)}`);
+      continue;
+    }
     // Legacy state predates service IDs and could only have come from product 35.
     const previous = stored?.service === customer.service ||
       (stored?.service === undefined && customer.service === "brp_existing_bsn") ? stored : undefined;
@@ -105,13 +128,14 @@ export async function evaluateCustomers(options: {
       } else {
         log.info("  Expiry notification: ALREADY SENT");
       }
-      state.customers[customer.id] = {
+      state.customers[customer.id] = notificationState(lifecyclePrevious, {
         service: customer.service,
+        status: "expired",
         lastMatchingDates: lifecyclePrevious.lastMatchingDates,
         lastCheckedAt: now.toISOString(),
         lastNotifiedAt: expirySent && !lifecyclePrevious.expiryNotificationSent ? now.toISOString() : lifecyclePrevious.lastNotifiedAt,
         expiryNotificationSent: expirySent
-      };
+      });
       continue;
     }
     evaluated += 1;
@@ -130,31 +154,14 @@ export async function evaluateCustomers(options: {
     log.info(`  Previous matching dates: ${dates(effectivePrevious.lastMatchingDates)}`);
     log.info(`  Matching dates changed: ${changed}`);
     let sent = false;
+    let alertId: string | undefined;
     if (shouldSend) {
       notificationsAttempted += 1;
-      const filter = describeDateFilter(customer.filter);
-      const simulationNotice = isSimulation
-        ? "This is a simulated appointment notification. No real appointment website was checked. No booking was attempted.\n\n"
-        : "";
-      const service = getAppointmentService(customer.service);
-      const earliest = matchingAvailability.find(item => item.date === matchingDates[0]);
-      const locationDetails = earliest?.location ? `\n\nLocation:\n${earliest.location}` : "";
+      alertId = createAlertId();
       try {
-        await sender.send({
-          title: isSimulation ? "🧪 Simulation: The Hague Appointment Available" : "The Hague appointment detected",
-          message: `${simulationNotice}Appointment type:\n${service.name}\n\nEarliest matching date:\n${matchingDates[0]}${locationDetails}\n\nYour monitoring preference:\n${filter}\n\nA matching appointment was available when we checked.\n\nAvailability can change quickly. This alert does not reserve an appointment.`,
-          isSimulation,
-          url: service.bookingUrl,
-          timestamp: now,
-          metadata: {
-            earliestMatchingDate: matchingDates[0]!,
-            matchingAppointmentCount: matchingDates.length,
-            filter,
-            timezone,
-            serviceId: service.id,
-            ...(earliest?.location ? { location: earliest.location } : {})
-          }
-        }, customer.chatId);
+        await sender.send(buildCustomerAppointmentAlert({
+          customer, matchingDates, now, timezone, isSimulation, alertId
+        }), customer.chatId);
         notificationsSent += 1;
         sent = true;
         log.info("  Notification: SENT");
@@ -166,13 +173,18 @@ export async function evaluateCustomers(options: {
     } else {
       log.info("  Notification: NOT NEEDED");
     }
-    state.customers[customer.id] = {
+    const alerts = sent && alertId
+      ? [...(effectivePrevious.alerts ?? []), { alertId, sentAt: now.toISOString(), response: null, respondedAt: null }]
+      : effectivePrevious.alerts ?? [];
+    state.customers[customer.id] = notificationState(effectivePrevious, {
       service: customer.service,
+      status: "active",
       lastMatchingDates: shouldSend && !sent ? effectivePrevious.lastMatchingDates : [...matchingDates],
       lastCheckedAt: now.toISOString(),
       lastNotifiedAt: sent ? now.toISOString() : effectivePrevious.lastNotifiedAt,
-      expiryNotificationSent: effectivePrevious.expiryNotificationSent ?? false
-    };
+      expiryNotificationSent: effectivePrevious.expiryNotificationSent ?? false,
+      alerts
+    });
   }
   return {
     evaluated,

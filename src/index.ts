@@ -25,7 +25,7 @@ import {
   logCustomerAvailability,
   logCustomerSummary
 } from "./customers/CustomerMonitor.js";
-import { loadCustomersState, saveCustomersState } from "./customers/CustomerState.js";
+import { loadCustomersState, mergeCustomersState, updateCustomersState } from "./customers/CustomerState.js";
 import { TelegramNotifier } from "./notifications/TelegramNotifier.js";
 import { createNotification, type NotificationDraft } from "./notifications/Notification.js";
 import { parseCustomerCliOptions } from "./customers/CustomerCli.js";
@@ -246,8 +246,9 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
   logger.info("Starting service-grouped customer appointment checks");
   const now = new Date();
   const isSimulation = runtimeMode.kind === "simulation";
-  const state = await loadCustomersState(config.customerStatePath);
-  const groups = groupActiveCustomersByService(customers, now, config.timezone);
+  const customerStatePath = isSimulation ? config.simulationCustomerStatePath : config.customerStatePath;
+  const state = await loadCustomersState(customerStatePath);
+  const groups = groupActiveCustomersByService(customers, now, config.timezone, state);
   const activeIds = new Set([...groups.values()].flat().map(customer => customer.id));
   const inactiveCustomers = customers.filter(customer => !activeIds.has(customer.id));
   const total: CustomerEvaluationSummary = {
@@ -315,7 +316,7 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
     }));
   });
   logCustomerSummary(total, log);
-  await saveCustomersState(config.customerStatePath, state);
+  await updateCustomersState(customerStatePath, latest => { mergeCustomersState(latest, state); });
   await scenarioRound?.complete();
 }
 

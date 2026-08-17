@@ -76,12 +76,15 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run check:simulate` | One fixed simulated check using `SIMULATE_STATUS` |
 | `npm run monitor:real` | Repeated headless real checks inside the configured schedule |
 | `npm run monitor:simulate` | Local scenario simulation using service-specific rounds |
+| `npm run telegram:listen` | Long-poll Telegram for real customer feedback buttons |
 | `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run debug:foreign-documents` | One safe product-15 check across all locations; prints location-aware availability and does not notify or monitor |
 | `npm run help` | Print CLI commands without checking the website |
-| `npm run test-notification` | Test only the platform notification provider |
-| `npm run reset-state` | Reset appointment, timeline, and per-customer notification state |
+| `npm run test-notification` | Send a production-style fake appointment alert through enabled channels |
+| `npm run reset-state` | Safely reset simulation and test-notification state |
+| `npm run reset-state:simulation` | Reset only simulation timeline and simulation customer state |
+| `npm run reset-state:test` | Reset only synthetic test-notification state |
 | `npm run typecheck` | Validate TypeScript without emitting files |
 | `npm test` | Run all unit tests once |
 | `npm run build` | Compile production JavaScript into `dist/` |
@@ -254,8 +257,61 @@ changed dates, a newly earlier date, or a match after a no-match cycle sends a n
 alert. State is independent by customer and service, so changing a customer ID's
 service starts availability deduplication fresh. A failed Telegram delivery for one
 customer does not stop evaluation of the others and is retried on a later cycle.
-`npm run reset-state` resets this notification state without changing either
-customer configuration file.
+There is deliberately no global command for resetting this real customer state.
+Real lifecycle outcomes change through explicit customer operations such as
+`customer:activate` and Telegram booking feedback; customer configuration files
+are never mutated by state commands.
+
+### Booking feedback buttons
+
+Real multi-customer appointment alerts include **I booked it** and **Keep
+looking** buttons. Start the independent callback listener alongside the monitor:
+
+```bash
+npm run monitor:real -- --customers
+npm run telegram:listen
+```
+
+The listener uses Telegram `getUpdates` long polling and the real customer
+configuration only. It verifies that the callback chat matches the configured
+customer. **I booked it** records the alert response and confirmation time, sets
+the customer's runtime status to `booked`, and excludes that customer from later
+checks. **Keep looking** records the unsuccessful alert and leaves the customer
+active. Old and duplicate button presses are handled without reactivating a
+customer.
+
+Runtime outcomes and the minimal per-alert history live in
+`data/customer-state.json`; configuration remains in `config/customers.json`.
+Simulation uses `data/simulation-customer-state.json`, so simulated monitoring
+and activation cannot modify real booking outcomes. The success reply is the
+exported `BOOKED_CONFIRMATION_MESSAGE` constant in `src/telegram-listener.ts`,
+which is the intended place to append a Tally URL later.
+
+For a systemd deployment, keep monitoring and callback polling independent. A
+second unit can use the same working directory, environment file, Node user, and
+restart policy as the existing monitor unit, with this command:
+
+```ini
+[Unit]
+Description=The Hague appointment Telegram feedback listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/the-hague-appointment-checker
+EnvironmentFile=/absolute/path/to/the-hague-appointment-checker/.env
+ExecStart=/usr/bin/npm run telegram:listen
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Review the absolute paths and service user for the host before installing this
+as `appointment-telegram.service`. The monitor does not depend on the listener,
+so Telegram polling failures cannot stop appointment checks.
 
 Simulation multi-customer mode loads only `config/customers.simulation.json` and
 never falls back to `config/customers.json`. Create it from the simulation-only
@@ -382,7 +438,7 @@ SIMULATION_PAUSE_BEFORE_CLOSE=false
 ```
 
 ```bash
-npm run reset-state
+npm run reset-state:simulation
 npm run monitor:simulate
 ```
 
@@ -394,7 +450,12 @@ their independent production date-filter evaluation.
 
 The dashboard remains open for `SIMULATION_KEEP_BROWSER_OPEN_MS`. With
 `SIMULATION_PAUSE_BEFORE_CLOSE=true`, an interactive run also waits for Enter.
-The scenario round index is stored locally and `npm run reset-state` resets it.
+The scenario round index is stored locally and `npm run reset-state:simulation`
+resets it together with simulation customer state. The safe umbrella
+`npm run reset-state` resets those two files plus synthetic test-notification
+state. Neither command modifies real customer state or production appointment
+state. Use `npm run reset-state:test` when only the synthetic Telegram feedback
+test should be reset.
 `SIMULATION_REPEAT=true` wraps to the first round after the last. When false, the
 final round is reused. `SIMULATION_SEQUENCE` and `SIMULATION_DATE_SEQUENCE` are no
 longer used and can be removed from existing `.env` files. Fixed one-shot
@@ -454,8 +515,34 @@ npm run test-notification
 ```
 
 The test command does not contact the appointment website. When Telegram is
-enabled it tests Telegram and the independently enabled desktop channel. Telegram
-failures are logged without stopping monitoring or other notification methods.
+enabled it uses the same appointment-alert builder, message formatter, booking
+link, inline buttons, compact callback data, and generated alert IDs as real
+multi-customer monitoring. It uses the reserved synthetic identity
+`customer-test-notification`; no real customer configuration is loaded or
+changed. Test callback outcomes are stored separately in
+`data/test-notification-state.json`. The independently enabled desktop channel
+continues to receive the same test alert.
+
+To test the complete feedback loop, use two terminals:
+
+```bash
+# Terminal 1
+npm run telegram:listen
+```
+
+```bash
+# Terminal 2
+npm run test-notification
+```
+
+Telegram should show a realistic appointment alert dated seven days from the
+test run, the normal product 35 booking link, and both feedback buttons. Pressing
+**I booked it** records the synthetic customer as booked in the dedicated test
+state and replies that monitoring stopped. Pressing **Keep looking** records that
+alert as unsuccessful and leaves the synthetic customer active. Run
+`test-notification` again to generate a fresh alert and reactivate only the
+synthetic test identity. Telegram failures are logged without stopping other
+notification channels.
 
 **Security:** never commit or paste your bot token into source files, screenshots,
 issues, or logs. `.env` is ignored by Git; `.env.example` contains empty values only.
