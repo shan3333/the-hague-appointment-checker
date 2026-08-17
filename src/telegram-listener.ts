@@ -5,6 +5,7 @@ import { customerStatus, updateCustomersState, type CustomerAlert, type Customer
 import { logger } from "./logger.js";
 import { pathToFileURL } from "node:url";
 import { TEST_NOTIFICATION_CUSTOMER_ID, testNotificationCustomer } from "./test-notification-customer.js";
+import { markCustomerBooked } from "./customers/CustomerStatusTransitions.js";
 
 export const BOOKED_CONFIRMATION_MESSAGE = "Great, glad you managed to book an appointment! 🎉 Monitoring has now been stopped.";
 
@@ -66,7 +67,8 @@ export async function handleTelegramCallback(options: {
     options.log.error(`[TELEGRAM] Rejected callback for ${customer.id}: chat mismatch`);
     return "unauthorized";
   }
-  const now = (options.now ?? new Date()).toISOString();
+  const nowDate = options.now ?? new Date();
+  const now = nowDate.toISOString();
   const stored = options.state.customers[customer.id] ?? {
     status: "active" as const, lastMatchingDates: [], lastCheckedAt: null, lastNotifiedAt: null,
     expiryNotificationSent: false, alerts: []
@@ -92,8 +94,7 @@ export async function handleTelegramCallback(options: {
   alert.respondedAt = now;
   stored.alerts = [...(stored.alerts ?? []).filter(candidate => candidate.alertId !== alert.alertId), alert];
   if (parsed.response === "booked") {
-    stored.status = "booked";
-    stored.bookedAt = now;
+    markCustomerBooked(stored, nowDate, "telegram");
     options.state.customers[customer.id] = stored;
     await telegramCall(() => options.api.answerCallbackQuery(options.callback.id, "Booking confirmed — monitoring stopped."), options.log);
     await telegramCall(() => options.api.sendMessage(customer.chatId, BOOKED_CONFIRMATION_MESSAGE), options.log);

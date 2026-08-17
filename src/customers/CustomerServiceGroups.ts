@@ -11,7 +11,7 @@ export function groupActiveCustomersByService(
 ): Map<AppointmentServiceId, CustomerConfig[]> {
   const groups = new Map<AppointmentServiceId, CustomerConfig[]>();
   for (const customer of customers) {
-    if (!customer.enabled || isCustomerExpired(customer, now, timezone) || customerStatus(state?.customers[customer.id]) === "booked") continue;
+    if (!customer.enabled || isCustomerExpired(customer, now, timezone) || customerStatus(state?.customers[customer.id]) !== "active") continue;
     const group = groups.get(customer.service) ?? [];
     group.push(customer);
     groups.set(customer.service, group);

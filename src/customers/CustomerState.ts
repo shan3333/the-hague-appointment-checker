@@ -6,6 +6,8 @@ export interface CustomerNotificationState {
   status?: CustomerStatus;
   activatedAt?: string | null;
   bookedAt?: string | null;
+  stoppedAt?: string | null;
+  statusSource?: "manual" | "telegram";
   lastMatchingDates: string[];
   lastCheckedAt: string | null;
   lastNotifiedAt: string | null;
@@ -84,8 +86,10 @@ export function mergeCustomersState(latest: CustomersState, monitored: Customers
     }
     latest.customers[customerId] = {
       ...incoming,
-      status: current.status === "booked" ? "booked" : incoming.status,
+      status: current.status && current.status !== "active" ? current.status : incoming.status,
       bookedAt: current.bookedAt ?? incoming.bookedAt,
+      stoppedAt: current.stoppedAt ?? incoming.stoppedAt,
+      statusSource: current.statusSource ?? incoming.statusSource,
       activatedAt: current.activatedAt ?? incoming.activatedAt,
       alerts: [...alerts.values()]
     };

@@ -97,7 +97,7 @@ export async function evaluateCustomers(options: {
       continue;
     }
     const stored = state.customers[customer.id];
-    if (customerStatus(stored) === "booked") {
+    if (customerStatus(stored) !== "active") {
       log.info(`[MONITOR] ${customer.id} skipped: status=${customerStatus(stored)}`);
       continue;
     }

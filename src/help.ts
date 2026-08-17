@@ -7,6 +7,8 @@ Usage:
   npm run monitor:simulate   Run the local timeline simulator
   npm run customer:activate -- <id>            Send a real customer activation confirmation
   npm run customer:activate:simulate -- <id>   Send a simulation-customer activation test
+  npm run customer:booked -- <id>              Mark a real customer as booked
+  npm run customer:stop -- <id>                 Stop monitoring a real customer
   npm run telegram:listen                       Listen for real customer feedback buttons
   npm run debug              Visible one-shot inspection at normal speed
   npm run debug:slow         Visible one-shot inspection with slowed actions and temporary keep-open

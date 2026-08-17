@@ -39,7 +39,7 @@ describe("Telegram customer feedback", () => {
     const context = setup();
     expect(await context.run("b")).toBe("booked");
     expect(context.state.customers[customer.id]).toMatchObject({
-      status: "booked", bookedAt: "2026-08-17T11:00:00.000Z"
+      status: "booked", bookedAt: "2026-08-17T11:00:00.000Z", statusSource: "telegram"
     });
     expect(context.state.customers[customer.id]?.alerts?.[0]).toMatchObject({
       response: "booked", respondedAt: "2026-08-17T11:00:00.000Z"

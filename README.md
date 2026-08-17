@@ -77,6 +77,9 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run monitor:real` | Repeated headless real checks inside the configured schedule |
 | `npm run monitor:simulate` | Local scenario simulation using service-specific rounds |
 | `npm run telegram:listen` | Long-poll Telegram for real customer feedback buttons |
+| `npm run customer:activate -- <id>` | Activate one real customer's monitoring |
+| `npm run customer:booked -- <id>` | Mark one real customer booked and stop monitoring |
+| `npm run customer:stop -- <id>` | Stop one real customer without recording a booking |
 | `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
 | `npm run debug:foreign-documents` | One safe product-15 check across all locations; prints location-aware availability and does not notify or monitor |
@@ -348,6 +351,24 @@ npm run customer:activate -- customer-001
 The command always loads the real customer configuration. It sends only to the
 selected customer and refuses unknown, disabled, or expired customers. Merely
 adding a customer to the JSON file never sends an activation message.
+
+If a customer does not use the Telegram feedback buttons, update only that real
+customer through an explicit administrative command:
+
+```bash
+npm run customer:booked -- customer-001
+npm run customer:stop -- customer-001
+```
+
+`customer:booked` records `bookedAt` and a manual status source.
+`customer:stop` records `stoppedAt` without classifying the outcome as a booking.
+Both preserve activation data, alert history, and unrelated customer records;
+both use the coordinated runtime-state update used by the Telegram listener.
+Repeating the same operation is safe and retains the original timestamp.
+Transitions from another inactive status, including `expired`, are rejected.
+These commands always load `config/customers.json` and modify only
+`data/customer-state.json`; simulation, test-notification, and global appointment
+state are not touched.
 
 To test activation safely with simulation customers only:
 

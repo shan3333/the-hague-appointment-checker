@@ -36,6 +36,8 @@ try {
       status: "active",
       activatedAt: new Date().toISOString(),
       bookedAt: null,
+      stoppedAt: null,
+      statusSource: undefined,
       lastMatchingDates: previous?.lastMatchingDates ?? [],
       lastCheckedAt: previous?.lastCheckedAt ?? null,
       lastNotifiedAt: previous?.lastNotifiedAt ?? null,
