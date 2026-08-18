@@ -22,6 +22,13 @@ export const APPOINTMENT_SERVICES = {
     productId: 30,
     name: "First BRP registration — residence permit holder",
     bookingUrl: "https://denhaag.mijnafspraakmaken.nl/?product=30"
+  },
+  brp_foreign_documents: {
+    id: "brp_foreign_documents",
+    productId: 15,
+    name: "Register foreign documents in the BRP",
+    bookingUrl: "https://denhaag.mijnafspraakmaken.nl/?product=15",
+    multipleLocations: true
   }
 } as const;
 

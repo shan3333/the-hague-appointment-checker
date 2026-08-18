@@ -277,7 +277,11 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
     return scenarioRound
       ? scenarioRound.getAvailability(serviceId)
       : runModeCheck(runtimeMode, fixedSimulation.status, {
-        real: () => checkOnce({ bookingUrl: service.bookingUrl, keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs }),
+        real: () => checkOnce({
+          bookingUrl: service.bookingUrl,
+          multipleLocations: "multipleLocations" in service && service.multipleLocations,
+          keepBrowserOpenMs: commandRuntime.keepBrowserOpenMs
+        }),
         simulated: status => checkOnce({
           simulatedStatus: status,
           simulatedAppointmentDates: config.simulateAppointmentDates,
@@ -306,6 +310,7 @@ async function performCustomerServiceChecks(customers: readonly CustomerConfig[]
     logCustomerAvailability({ status: result.status, appointmentDates: result.appointmentDates ?? [], isSimulation, log });
     addSummary(total, await evaluateCustomers({
       customers: serviceCustomers, state, status: result.status, appointmentDates: result.appointmentDates ?? [],
+      availabilities: result.availabilities,
       now, timezone: config.timezone, isSimulation, sender, log
     }));
   });

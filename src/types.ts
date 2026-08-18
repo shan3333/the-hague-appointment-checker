@@ -1,5 +1,10 @@
 export type AppointmentStatus = "AVAILABLE" | "NOT_AVAILABLE" | "PAGE_NOT_LOADED" | "ERROR";
 
+export interface AppointmentAvailability {
+  date: string;
+  location?: string;
+}
+
 export interface DomSignals {
   pageHeadingPresent: boolean;
   calendarPresent: boolean;
@@ -16,5 +21,6 @@ export interface CheckResult {
   reason: string;
   signals?: DomSignals;
   appointmentDates?: string[];
+  availabilities?: AppointmentAvailability[];
   screenshotPath?: string;
 }

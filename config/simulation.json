@@ -3,13 +3,18 @@
     {
       "services": {
         "brp_existing_bsn": [],
-        "brp_eu_eea_swiss_first_registration": []
+        "brp_eu_eea_swiss_first_registration": [],
+        "brp_foreign_documents": []
       }
     },
     {
       "services": {
         "brp_existing_bsn": [],
-        "brp_eu_eea_swiss_first_registration": ["2026-08-20"]
+        "brp_eu_eea_swiss_first_registration": ["2026-08-20"],
+        "brp_foreign_documents": [
+          { "date": "2026-08-20", "location": "Stadsdeelkantoor Laak" },
+          { "date": "2026-08-20", "location": "Stadsdeelkantoor Escamp" }
+        ]
       }
     },
     {

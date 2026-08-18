@@ -32,5 +32,16 @@
       "value": "1m"
     },
     "expiresAt": "2026-09-07"
+  },
+  {
+    "id": "customer-004",
+    "service": "brp_foreign_documents",
+    "chatId": "-1004444444444",
+    "enabled": true,
+    "filter": {
+      "type": "within",
+      "value": "1m"
+    },
+    "expiresAt": "2026-09-07"
   }
 ]

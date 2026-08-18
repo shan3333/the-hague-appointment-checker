@@ -78,6 +78,7 @@ The npm commands below explicitly select their mode, so simulation settings in
 | `npm run monitor:simulate` | Local scenario simulation using service-specific rounds |
 | `npm run debug` | Visible one-shot inspection at normal speed; saves a screenshot and rendered HTML |
 | `npm run debug:slow` | Visible one-shot inspection with slowed actions, verbose step logs, debug artifacts, and temporary keep-open |
+| `npm run debug:foreign-documents` | One safe product-15 check across all locations; prints location-aware availability and does not notify or monitor |
 | `npm run help` | Print CLI commands without checking the website |
 | `npm run test-notification` | Test only the platform notification provider |
 | `npm run reset-state` | Reset appointment, timeline, and per-customer notification state |
@@ -135,6 +136,27 @@ the saved status and matching dates are unchanged.
 | `brp_dutch_first_registration` | First BRP registration — Dutch citizen | 27 |
 | `brp_eu_eea_swiss_first_registration` | First BRP registration — EU/EEA/Swiss citizen | 28 |
 | `brp_residence_permit_first_registration` | First BRP registration — residence permit holder | 30 |
+| `brp_foreign_documents` | Register foreign documents in the BRP | 15 |
+
+Product 15 is location-aware. Availability is represented internally as
+`{ date: string; location?: string }`; the optional location keeps all existing
+single-location services compatible. The checker discovers every location,
+selects them sequentially, waits for each calendar result, and combines the
+dates. Customer filters are applied to the combined availability, and the
+location for the earliest matching appointment is included in the alert.
+
+To inspect product 15 once without enabling monitoring or sending notifications,
+run:
+
+```bash
+npm run debug:foreign-documents
+```
+
+The observed flow uses `button.location-list-item` for location choices, an `h2`
+inside each choice for its name, and the accessible calendar title
+`Datum is beschikbaar`. Selecting a location replaces the list with its calendar;
+`Wijzig locatie` returns to the list. These stable semantic labels are preferred,
+but municipality markup can change without notice.
 
 ## Multi-customer monitoring MVP
 
@@ -201,7 +223,7 @@ Required fields are `id`, `service`, `chatId`, `enabled`, `filter`, and `expires
 Customer IDs must be unique. Filters use the exact validation and inclusive date
 boundaries of `--before`, `--within`, and `--between`.
 
-`service` must be one of the four supported IDs above. Missing or unknown values
+`service` must be one of the five supported IDs above. Missing or unknown values
 fail validation and include the customer ID in the error. There is deliberately
 no fallback to product 35.
 
