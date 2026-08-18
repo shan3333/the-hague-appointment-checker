@@ -8,6 +8,7 @@ screenshots/*.html
 data/state.json
 data/simulation-state.json
 data/customer-state.json
+data/test-notification-state.json
 config/customers.json
 config/customers.simulation.json
 *.log
