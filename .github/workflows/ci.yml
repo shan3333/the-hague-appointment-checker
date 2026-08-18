@@ -24,6 +24,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
         env:
-          APPOINTMENT_MODE: AVAILABLE
+          APPOINTMENT_MODE: simulated_fix
+          SIMULATE_STATUS: AVAILABLE
       - run: npm run build
       - run: npm pack --dry-run
