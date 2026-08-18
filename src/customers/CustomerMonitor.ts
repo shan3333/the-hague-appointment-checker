@@ -97,17 +97,14 @@ export async function evaluateCustomers(options: {
       continue;
     }
     const stored = state.customers[customer.id];
-    if (customerStatus(stored) !== "active") {
-      log.info(`[MONITOR] ${customer.id} skipped: status=${customerStatus(stored)}`);
-      continue;
-    }
     // Legacy state predates service IDs and could only have come from product 35.
     const previous = stored?.service === customer.service ||
       (stored?.service === undefined && customer.service === "brp_existing_bsn") ? stored : undefined;
     const effectivePrevious = previous ?? {
       lastMatchingDates: [], lastCheckedAt: null, lastNotifiedAt: null, expiryNotificationSent: false
     };
-    if (isCustomerExpired(customer, now, timezone)) {
+    const lifecycleStatus = customerStatus(stored);
+    if (isCustomerExpired(customer, now, timezone) && (lifecycleStatus === "active" || lifecycleStatus === "expired")) {
       // Expiry delivery is per customer lifecycle, independent of appointment service.
       const lifecyclePrevious = stored ?? effectivePrevious;
       expired += 1;
@@ -136,6 +133,10 @@ export async function evaluateCustomers(options: {
         lastNotifiedAt: expirySent && !lifecyclePrevious.expiryNotificationSent ? now.toISOString() : lifecyclePrevious.lastNotifiedAt,
         expiryNotificationSent: expirySent
       });
+      continue;
+    }
+    if (lifecycleStatus !== "active") {
+      log.info(`[MONITOR] ${customer.id} skipped: status=${lifecycleStatus}`);
       continue;
     }
     evaluated += 1;

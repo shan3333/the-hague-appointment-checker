@@ -149,6 +149,33 @@ describe("customer expiry notifications", () => {
     expect(context.state.customers[expired.id]?.expiryNotificationSent).toBe(true);
   });
 
+  it("retries a failed expiry notification until it succeeds, then sends no more", async () => {
+    const expired = { ...active, expiresAt: "2026-08-06" };
+    const context = evaluationSetup([expired]);
+    context.options.sender = {
+      send: vi.fn()
+        .mockRejectedValueOnce(new Error("Telegram unavailable"))
+        .mockResolvedValue(undefined)
+    };
+
+    await evaluateCustomers(context.options);
+    expect(context.options.sender.send).toHaveBeenCalledTimes(1);
+    expect(context.state.customers[expired.id]).toMatchObject({
+      status: "expired",
+      expiryNotificationSent: false
+    });
+
+    await evaluateCustomers(context.options);
+    expect(context.options.sender.send).toHaveBeenCalledTimes(2);
+    expect(context.state.customers[expired.id]).toMatchObject({
+      status: "expired",
+      expiryNotificationSent: true
+    });
+
+    await evaluateCustomers(context.options);
+    expect(context.options.sender.send).toHaveBeenCalledTimes(2);
+  });
+
   it("a failed expiry delivery does not stop another customer's appointment alert", async () => {
     const expired = { ...active, expiresAt: "2026-08-06" };
     const other = { ...active, id: "customer-b", chatId: "private-chat-b" };
