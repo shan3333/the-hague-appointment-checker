@@ -49,6 +49,36 @@ describe("multi-customer evaluation", () => {
     expect(context.deliveries[0]?.notification.url).not.toContain("product=35");
   });
 
+  it("includes the matching location for a multi-location service", async () => {
+    const context = setup({
+      customers: [{ ...customers[0]!, service: "brp_foreign_documents" }],
+      appointmentDates: ["2026-08-20", "2026-09-10"],
+      availabilities: [
+        { date: "2026-08-20", location: "Stadsdeelkantoor Laak" },
+        { date: "2026-08-20", location: "Stadsdeelkantoor Escamp" },
+        { date: "2026-09-10", location: "Stadsdeelkantoor Escamp" }
+      ]
+    });
+    await evaluateCustomers(context.options);
+    expect(context.deliveries).toHaveLength(1);
+    expect(context.deliveries[0]?.notification.message).toContain("Location:\nStadsdeelkantoor Escamp");
+    expect(context.deliveries[0]?.notification.metadata?.location).toBe("Stadsdeelkantoor Escamp");
+  });
+
+  it("does not notify when no location has a date matching the customer filter", async () => {
+    const context = setup({
+      customers: [{ ...customers[2]!, service: "brp_foreign_documents" }],
+      appointmentDates: ["2026-08-20", "2026-09-10"],
+      availabilities: [
+        { date: "2026-08-20", location: "Stadsdeelkantoor Laak" },
+        { date: "2026-09-10", location: "Stadsdeelkantoor Escamp" }
+      ]
+    });
+    const summary = await evaluateCustomers(context.options);
+    expect(summary.customersWithMatches).toBe(0);
+    expect(context.deliveries).toHaveLength(0);
+  });
+
   it("resets availability deduplication when the same customer ID changes service", async () => {
     const context = setup({ customers: [customers[0]!] });
     await evaluateCustomers(context.options);

@@ -5,7 +5,7 @@ import { config } from "./config.js";
 import { classifyAppointmentStatus, reasonFor } from "./classifier.js";
 import { logger } from "./logger.js";
 import { withRetry } from "./retry.js";
-import type { CheckResult, DomSignals } from "./types.js";
+import type { AppointmentAvailability, CheckResult, DomSignals } from "./types.js";
 import { renderSimulation } from "./simulation/renderSimulation.js";
 import type { SimulatedStatus } from "./simulation/TimelineSimulator.js";
 import type { SimulationView } from "./simulation/renderSimulation.js";
@@ -17,7 +17,10 @@ export const SELECTORS = {
   flowHeading: "main h1",
   calendarInput: "#date-select",
   noAppointments: "#days-available-message",
-  availableDate: '[role="dialog"] button.duet-date__day[aria-disabled="false"]:not([disabled])',
+  availableDate: '[role="dialog"] button.duet-date__day:not([disabled]):not([aria-disabled="true"]):not(.is-disabled)',
+  location: "button.location-list-item",
+  locationName: "button.location-list-item h2",
+  changeLocation: "button.edit-button",
   timeSelect: "#time-select",
   availableTime: '#time-select option[value]:not([value=""]):not([disabled])',
   loading: '[role="status"]',
@@ -61,6 +64,28 @@ async function reachCalendar(page: Page, bookingUrl: string): Promise<void> {
   if (await loader.count()) await loader.first().waitFor({ state: "hidden", timeout: config.selectorTimeoutMs });
 }
 
+async function reachPlaceAndTime(page: Page, bookingUrl: string): Promise<void> {
+  await page.goto(bookingUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs });
+  await page.waitForLoadState("networkidle", { timeout: config.navigationTimeoutMs }).catch(() => undefined);
+  await page.locator(SELECTORS.flowHeading).waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+  if (await page.getByRole("heading", { name: /Kies wat u wilt regelen/i }).isVisible().catch(() => false)) {
+    const next = page.getByRole("button", { name: "Volgende stap", exact: true });
+    await next.waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+    await next.click();
+  }
+  await page.getByRole("heading", { name: /Kies plek en tijd/i }).waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+}
+
+async function waitForCalendarResult(page: Page): Promise<void> {
+  await page.locator(SELECTORS.calendarInput).waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+  const loader = page.locator(SELECTORS.loading).filter({ hasText: /Laden/i });
+  if (await loader.count()) await loader.first().waitFor({ state: "hidden", timeout: config.selectorTimeoutMs });
+  // Aurelia keeps hidden/stale calendar controls mounted while switching locations.
+  // Waiting for the loader plus a short render turn is more reliable than racing
+  // mutually exclusive locators, whose losing waits can reject first.
+  await page.waitForTimeout(500);
+}
+
 export async function extractSignals(page: Page): Promise<DomSignals> {
   // A string avoids build-tool helper injection into Playwright's isolated page context.
   return page.evaluate<DomSignals>(String.raw`(() => {
@@ -70,7 +95,7 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
       return visible(element) ? (element.textContent || '').trim() : '';
     };
     const dates = Array.from(document.querySelectorAll(${JSON.stringify(SELECTORS.availableDate)}))
-      .filter(button => visible(button) && !button.disabled && button.getAttribute('aria-disabled') === 'false');
+      .filter(button => !button.disabled && button.getAttribute('aria-disabled') !== 'true' && !button.classList.contains('is-disabled'));
     const monthNumbers = {
       januari: '01', februari: '02', maart: '03', april: '04', mei: '05', juni: '06',
       juli: '07', augustus: '08', september: '09', oktober: '10', november: '11', december: '12'
@@ -85,15 +110,15 @@ export async function extractSignals(page: Page): Promise<DomSignals> {
       if (!match || !monthNumbers[match[2]] || !(match[3] || fallbackYear)) return '';
       return (match[3] || fallbackYear) + '-' + monthNumbers[match[2]] + '-' + match[1].padStart(2, '0');
     };
-    const headerText = (document.querySelector('.duet-date__select-label') || {}).textContent || '';
-    const displayedYear = (/\b(\d{4})\b/.exec(headerText) || [])[1] || '';
     const selectedInput = document.querySelector(${JSON.stringify(SELECTORS.calendarInput)});
+    const headerText = (document.querySelector('.duet-date__select-label') || {}).textContent || '';
+    const displayedYear = (/\b(\d{4})\b/.exec(headerText + ' ' + (selectedInput?.value || '')) || [])[1] || '';
     const selectedAccessibleText = (document.querySelector('#selected-date-sr-only') || {}).textContent || '';
     const appointmentDates = [
       normalizeDate(selectedInput && selectedInput.value, displayedYear),
-      normalizeDate(selectedAccessibleText, displayedYear),
+      normalizeDate(selectedInput?.value ? selectedAccessibleText : '', displayedYear),
       ...dates.map(button => normalizeDate(
-        button.getAttribute('data-date') || button.value || button.textContent || '',
+        button.getAttribute('data-date') || button.value || button.querySelector('.duet-date__vhidden')?.textContent || button.textContent || '',
         displayedYear
       ))
     ].filter(Boolean).filter((value, index, all) => all.indexOf(value) === index).sort();
@@ -129,6 +154,50 @@ export interface CheckOptions {
   simulationView?: SimulationView;
   keepBrowserOpenMs?: number;
   pauseBeforeClose?: boolean;
+  multipleLocations?: boolean;
+}
+
+async function inspectLocations(page: Page): Promise<{ signals: DomSignals; availabilities: AppointmentAvailability[] }> {
+  await page.locator(SELECTORS.location).first().waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+  const locationNames = (await page.locator(SELECTORS.locationName).allTextContents()).map(name => name.trim());
+  const availabilities: AppointmentAvailability[] = [];
+  const locationSignals: DomSignals[] = [];
+  for (let index = 0; index < locationNames.length; index += 1) {
+    const location = locationNames[index]!;
+    await page.locator(SELECTORS.location).nth(index).click();
+    await waitForCalendarResult(page);
+    const calendarToggle = page.getByRole("button", { name: /Klik hier om de kalender te openen/i });
+    if (await calendarToggle.isVisible().catch(() => false)) {
+      await calendarToggle.click({ force: true });
+      await page.waitForTimeout(250);
+    }
+    const signals = await extractSignals(page);
+    locationSignals.push(signals);
+    availabilities.push(...signals.appointmentDates.map(date => ({ date, location })));
+    if (index < locationNames.length - 1) {
+      const closeCalendar = page.locator("button.duet-date__close");
+      if (await closeCalendar.isVisible().catch(() => false)) await closeCalendar.click();
+      await page.locator(SELECTORS.changeLocation).click();
+      await page.locator(SELECTORS.location).first().waitFor({ state: "visible", timeout: config.selectorTimeoutMs });
+    }
+  }
+  const definitive = locationSignals.every(signal => classifyAppointmentStatus(signal) === "NOT_AVAILABLE");
+  const failed = locationSignals.find(signal => ["ERROR", "PAGE_NOT_LOADED"].includes(classifyAppointmentStatus(signal)));
+  const template = failed ?? locationSignals[locationSignals.length - 1];
+  if (!template) throw new Error("No appointment locations were found");
+  const dates = availabilities.map(item => item.date);
+  return {
+    availabilities,
+    signals: {
+      ...template,
+      pageHeadingPresent: true,
+      calendarPresent: true,
+      loadingVisible: false,
+      enabledDateCount: availabilities.length,
+      appointmentDates: [...new Set(dates)].sort(),
+      noAppointmentsText: definitive ? "Geen dagen beschikbaar op alle locaties" : template.noAppointmentsText
+    }
+  };
 }
 
 async function waitForEnter(): Promise<void> {
@@ -166,14 +235,19 @@ export async function checkOnce(options: CheckOptions = {}): Promise<CheckResult
         logger.info("Simulated calendar loaded");
       } else {
         if (!options.bookingUrl) throw new Error("A booking URL is required for a real availability check");
-        await reachCalendar(page, options.bookingUrl);
+        if (options.multipleLocations) await reachPlaceAndTime(page, options.bookingUrl);
+        else await reachCalendar(page, options.bookingUrl);
         logger.info("Calendar loaded");
       }
       if (config.debugSlowMode) logger.info("Reading availability");
-      const signals = await extractSignals(page);
+      const locationResult = options.multipleLocations ? await inspectLocations(page) : undefined;
+      const signals = locationResult?.signals ?? await extractSignals(page);
       const status = classifyAppointmentStatus(signals);
       if (config.debugSlowMode) logger.info(`Status detected: ${status}`);
-      const result: CheckResult = { status, reason: reasonFor(signals), signals, appointmentDates: signals.appointmentDates };
+      const result: CheckResult = {
+        status, reason: reasonFor(signals), signals, appointmentDates: signals.appointmentDates,
+        availabilities: locationResult?.availabilities ?? signals.appointmentDates.map(date => ({ date }))
+      };
       const screenshotMatches = options.shouldCaptureAvailabilityScreenshot?.(signals.appointmentDates) ?? true;
       const artifacts = await captureCheckArtifacts({
         status,

@@ -34,6 +34,7 @@
     "customer:activate:simulate": "cross-env APPOINTMENT_MODE=simulate-fixed SIMULATE_STATUS=NOT_AVAILABLE tsx src/customer-activate.ts",
     "debug": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SLOW_MODE=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
     "debug:slow": "cross-env APPOINTMENT_MODE=real DEBUG_SLOW_MODE=true HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/index.ts check",
+    "debug:foreign-documents": "cross-env APPOINTMENT_MODE=real HEADLESS=false DEBUG_SCREENSHOTS=true tsx src/debug-service.ts",
     "help": "tsx src/help.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.build.json",

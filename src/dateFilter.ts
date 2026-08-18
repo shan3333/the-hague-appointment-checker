@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import type { AppointmentStatus } from "./types.js";
+import type { AppointmentAvailability } from "./types.js";
 
 export type WithinUnit = "d" | "w" | "m";
 
@@ -115,6 +116,18 @@ export function filterAppointmentsByDateRange(
   range: DateRange
 ): string[] {
   return [...new Set(appointments.filter(date => isAppointmentWithinRange(date, range)))].sort();
+}
+
+export function filterAvailabilityByDateRange(
+  availability: readonly AppointmentAvailability[],
+  range: DateRange
+): AppointmentAvailability[] {
+  return availability
+    .filter(item => isAppointmentWithinRange(item.date, range))
+    .filter((item, index, all) => all.findIndex(candidate =>
+      candidate.date === item.date && candidate.location === item.location
+    ) === index)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.location ?? "").localeCompare(b.location ?? ""));
 }
 
 export function evaluateDateFilter(

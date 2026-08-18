@@ -40,6 +40,20 @@ describe("scenario simulation", () => {
     });
   });
 
+  it("preserves duplicate dates at different locations", async () => {
+    const multiLocation = parseSimulationScenario({ rounds: [{ services: {
+      brp_foreign_documents: [
+        { date: "2026-08-20", location: "Stadsdeelkantoor Laak" },
+        { date: "2026-08-20", location: "Stadsdeelkantoor Escamp" },
+        { date: "2026-08-24", location: "Stadsdeelkantoor Laak" }
+      ]
+    } }] });
+    const result = (await new ScenarioSimulator(multiLocation, false, new MemoryStateStore()).beginRound())
+      .getAvailability("brp_foreign_documents");
+    expect(result.appointmentDates).toEqual(["2026-08-20", "2026-08-24"]);
+    expect(result.availabilities).toHaveLength(3);
+  });
+
   it("lets multiple customers filter the same raw service result independently", async () => {
     const simulator = new ScenarioSimulator(scenario, true, new MemoryStateStore());
     const availability = (await simulator.beginRound())

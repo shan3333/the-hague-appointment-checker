@@ -1,6 +1,6 @@
-import { calculateDateRange, describeDateFilter, evaluateDateFilter } from "../dateFilter.js";
+import { calculateDateRange, describeDateFilter, evaluateDateFilter, filterAvailabilityByDateRange } from "../dateFilter.js";
 import type { NotificationDraft } from "../notifications/Notification.js";
-import type { AppointmentStatus } from "../types.js";
+import type { AppointmentAvailability, AppointmentStatus } from "../types.js";
 import type { CustomerConfig } from "./CustomerConfig.js";
 import { matchingDatesDiffer, type CustomersState } from "./CustomerState.js";
 import { expiryNotification, isCustomerExpired } from "./CustomerLifecycle.js";
@@ -55,6 +55,7 @@ export async function evaluateCustomers(options: {
   state: CustomersState;
   status: AppointmentStatus;
   appointmentDates: readonly string[];
+  availabilities?: readonly AppointmentAvailability[];
   now: Date;
   timezone: string;
   isSimulation: boolean;
@@ -62,6 +63,7 @@ export async function evaluateCustomers(options: {
   log: CustomerLog;
 }): Promise<CustomerEvaluationSummary> {
   const { customers, state, status, appointmentDates, now, timezone, isSimulation, sender, log } = options;
+  const availability = options.availabilities ?? appointmentDates.map(date => ({ date }));
   let evaluated = 0;
   let expired = 0;
   let disabled = 0;
@@ -116,6 +118,7 @@ export async function evaluateCustomers(options: {
     const range = calculateDateRange(now, customer.filter, timezone);
     const evaluation = evaluateDateFilter(status, appointmentDates, range, true);
     const matchingDates = evaluation.matchingDates;
+    const matchingAvailability = filterAvailabilityByDateRange(availability, range);
     if (matchingDates.length > 0) customersWithMatches += 1;
     const changed = matchingDatesDiffer(effectivePrevious.lastMatchingDates, matchingDates);
     const shouldSend = matchingDates.length > 0 && changed;
@@ -134,10 +137,12 @@ export async function evaluateCustomers(options: {
         ? "This is a simulated appointment notification. No real appointment website was checked. No booking was attempted.\n\n"
         : "";
       const service = getAppointmentService(customer.service);
+      const earliest = matchingAvailability.find(item => item.date === matchingDates[0]);
+      const locationDetails = earliest?.location ? `\n\nLocation:\n${earliest.location}` : "";
       try {
         await sender.send({
           title: isSimulation ? "🧪 Simulation: The Hague Appointment Available" : "The Hague appointment detected",
-          message: `${simulationNotice}Appointment type:\n${service.name}\n\nEarliest matching date:\n${matchingDates[0]}\n\nYour monitoring preference:\n${filter}\n\nA matching appointment was available when we checked.\n\nAvailability can change quickly. This alert does not reserve an appointment.`,
+          message: `${simulationNotice}Appointment type:\n${service.name}\n\nEarliest matching date:\n${matchingDates[0]}${locationDetails}\n\nYour monitoring preference:\n${filter}\n\nA matching appointment was available when we checked.\n\nAvailability can change quickly. This alert does not reserve an appointment.`,
           isSimulation,
           url: service.bookingUrl,
           timestamp: now,
@@ -146,7 +151,8 @@ export async function evaluateCustomers(options: {
             matchingAppointmentCount: matchingDates.length,
             filter,
             timezone,
-            serviceId: service.id
+            serviceId: service.id,
+            ...(earliest?.location ? { location: earliest.location } : {})
           }
         }, customer.chatId);
         notificationsSent += 1;

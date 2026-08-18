@@ -4,11 +4,11 @@ import {
   isAppointmentServiceId,
   type AppointmentServiceId
 } from "../appointmentServices.js";
-import type { CheckResult } from "../types.js";
+import type { AppointmentAvailability, CheckResult } from "../types.js";
 import type { TimelineStateStore } from "./TimelineSimulator.js";
 
 export interface SimulationRound {
-  services: Partial<Record<AppointmentServiceId, readonly string[]>>;
+  services: Partial<Record<AppointmentServiceId, readonly AppointmentAvailability[]>>;
 }
 
 export interface SimulationScenario {
@@ -30,7 +30,7 @@ export function parseSimulationScenario(value: unknown): SimulationScenario {
     rounds: root.rounds.map((rawRound, roundIndex) => {
       const round = object(rawRound, `Simulation round ${roundIndex + 1}`);
       const rawServices = object(round.services, `Simulation round ${roundIndex + 1} services`);
-      const services: Partial<Record<AppointmentServiceId, readonly string[]>> = {};
+      const services: Partial<Record<AppointmentServiceId, readonly AppointmentAvailability[]>> = {};
       for (const [serviceId, rawDates] of Object.entries(rawServices)) {
         if (!isAppointmentServiceId(serviceId)) {
           throw new Error(`Simulation round ${roundIndex + 1} has unsupported service "${serviceId}"`);
@@ -38,13 +38,18 @@ export function parseSimulationScenario(value: unknown): SimulationScenario {
         if (!Array.isArray(rawDates)) {
           throw new Error(`Simulation round ${roundIndex + 1} service "${serviceId}" dates must be an array`);
         }
-        const dates = rawDates.map((rawDate, dateIndex) => {
-          if (typeof rawDate !== "string" || !parseDateOnly(rawDate)) {
+        const dates = rawDates.map((rawDate, dateIndex): AppointmentAvailability => {
+          const item = typeof rawDate === "string" ? { date: rawDate } : object(rawDate, `Simulation round ${roundIndex + 1} service "${serviceId}" availability ${dateIndex}`);
+          if (typeof item.date !== "string" || !parseDateOnly(item.date)) {
             throw new Error(`Simulation round ${roundIndex + 1} service "${serviceId}" has invalid date at index ${dateIndex}`);
           }
-          return rawDate;
+          if ("location" in item && item.location !== undefined && (typeof item.location !== "string" || !item.location.trim())) {
+            throw new Error(`Simulation round ${roundIndex + 1} service "${serviceId}" has invalid location at index ${dateIndex}`);
+          }
+          return { date: item.date, ...(typeof item.location === "string" ? { location: item.location.trim() } : {}) };
         });
-        services[serviceId] = [...new Set(dates)].sort();
+        services[serviceId] = dates.filter((item, index, all) => all.findIndex(candidate => candidate.date === item.date && candidate.location === item.location) === index)
+          .sort((a, b) => a.date.localeCompare(b.date) || (a.location ?? "").localeCompare(b.location ?? ""));
       }
       return { services };
     })
@@ -91,11 +96,13 @@ export class ScenarioSimulator {
       roundNumber: state.totalChecks + 1,
       getAvailability: serviceId => {
         // Omitted services are explicitly treated as unavailable.
-        const appointmentDates = [...(round.services[serviceId] ?? [])];
+        const availabilities = [...(round.services[serviceId] ?? [])];
+        const appointmentDates = [...new Set(availabilities.map(item => item.date))].sort();
         return {
           status: appointmentDates.length > 0 ? "AVAILABLE" : "NOT_AVAILABLE",
           reason: `Simulation scenario round ${roundIndex + 1}`,
-          appointmentDates
+          appointmentDates,
+          availabilities
         };
       },
       complete: async () => {
