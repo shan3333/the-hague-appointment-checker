@@ -12,6 +12,11 @@ import { telegramCustomerKey } from "../src/customers/CustomerAlertIdentity.js";
 import { resolveCallbackTarget } from "../src/telegram-listener.js";
 import { config } from "../src/config.js";
 import { buildStandaloneAppointmentAlert, prepareStandaloneAppointmentAlertState } from "../src/standalone-appointment-alert.js";
+import {
+  TELEGRAM_BOOKED_BUTTON_TEXT,
+  TELEGRAM_KEEP_LOOKING_BUTTON_TEXT,
+  telegramAppointmentFeedbackKeyboard
+} from "../src/notifications/TelegramAppointmentFeedback.js";
 
 describe("standalone production-style appointment notification", () => {
   const now = new Date("2026-08-17T10:00:00.000Z");
@@ -35,7 +40,10 @@ describe("standalone production-style appointment notification", () => {
     );
     const body = JSON.parse(String((fetchFn.mock.calls[0] as [string, RequestInit])[1].body));
     const buttons = body.reply_markup.inline_keyboard[0];
-    expect(buttons.map((button: { text: string }) => button.text)).toEqual(["✅ I booked it", "❌ Keep looking"]);
+    expect(buttons.map((button: { text: string }) => button.text)).toEqual([
+      TELEGRAM_BOOKED_BUTTON_TEXT,
+      TELEGRAM_KEEP_LOOKING_BUTTON_TEXT
+    ]);
     expect(buttons.map((button: { callback_data: string }) => button.callback_data)).toEqual([
       expect.stringMatching(/^b:[a-f0-9]{8}:a42abcde$/),
       expect.stringMatching(/^n:[a-f0-9]{8}:a42abcde$/)
@@ -59,10 +67,9 @@ describe("standalone production-style appointment notification", () => {
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     await new TelegramNotifier("token", "simulation-chat", 1000, fetchFn).notify(createNotification(draft));
     const body = JSON.parse(String((fetchFn.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(body.reply_markup.inline_keyboard[0]).toEqual([
-      { text: "✅ I booked it", callback_data: `b:${telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID)}:${alertId}` },
-      { text: "❌ Keep looking", callback_data: `n:${telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID)}:${alertId}` }
-    ]);
+    expect(body.reply_markup).toEqual(
+      telegramAppointmentFeedbackKeyboard(telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID), alertId)
+    );
     expect(JSON.parse(await readFile(statePath, "utf8")).customers[TEST_NOTIFICATION_CUSTOMER_ID].alerts)
       .toEqual([expect.objectContaining({ alertId, response: null })]);
   });

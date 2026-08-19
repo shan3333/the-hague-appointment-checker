@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TelegramNotifier, formatTelegramMessage } from "../src/notifications/TelegramNotifier.js";
 import type { Notification } from "../src/notifications/Notification.js";
+import { telegramAppointmentFeedbackKeyboard } from "../src/notifications/TelegramAppointmentFeedback.js";
 
 const notification: Notification = {
   title: "The Hague appointment available",
@@ -77,10 +78,7 @@ describe("TelegramNotifier", () => {
     const notifier = new TelegramNotifier("token", "chat", 1000, fetchFn);
     await notifier.notify({ ...notification, metadata: { ...notification.metadata, telegramCustomerKey: "c001abcd", alertId: "a42abcde" } });
     const body = JSON.parse(String((fetchFn.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(body.reply_markup.inline_keyboard[0]).toEqual([
-      { text: "✅ I booked it", callback_data: "b:c001abcd:a42abcde" },
-      { text: "❌ Keep looking", callback_data: "n:c001abcd:a42abcde" }
-    ]);
+    expect(body.reply_markup).toEqual(telegramAppointmentFeedbackKeyboard("c001abcd", "a42abcde"));
   });
 
   it("adds the same feedback buttons to simulated customer alerts", async () => {
@@ -92,10 +90,7 @@ describe("TelegramNotifier", () => {
       metadata: { ...notification.metadata, telegramCustomerKey: "c001abcd", alertId: "a42abcde" }
     });
     const body = JSON.parse(String((fetchFn.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(body.reply_markup.inline_keyboard[0]).toEqual([
-      { text: "✅ I booked it", callback_data: "b:c001abcd:a42abcde" },
-      { text: "❌ Keep looking", callback_data: "n:c001abcd:a42abcde" }
-    ]);
+    expect(body.reply_markup).toEqual(telegramAppointmentFeedbackKeyboard("c001abcd", "a42abcde"));
   });
 
   it("reports network failure", async () => {

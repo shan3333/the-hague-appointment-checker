@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import type { Notification } from "./Notification.js";
 import type { NotificationProvider } from "./NotificationProvider.js";
+import { telegramAppointmentFeedbackKeyboard } from "./TelegramAppointmentFeedback.js";
 
 export type TelegramFetch = typeof fetch;
 
@@ -43,12 +44,7 @@ export function telegramReplyMarkup(notification: Notification): object | undefi
   const customerKey = notification.metadata.telegramCustomerKey;
   const alertId = notification.metadata.alertId;
   if (typeof customerKey !== "string" || typeof alertId !== "string") return undefined;
-  return {
-    inline_keyboard: [[
-      { text: "✅ I booked it", callback_data: `b:${customerKey}:${alertId}` },
-      { text: "❌ Keep looking", callback_data: `n:${customerKey}:${alertId}` }
-    ]]
-  };
+  return telegramAppointmentFeedbackKeyboard(customerKey, alertId);
 }
 
 export class TelegramNotifier implements NotificationProvider {

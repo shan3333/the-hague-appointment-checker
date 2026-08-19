@@ -10,6 +10,10 @@ import type { CustomerConfig } from "../src/customers/CustomerConfig.js";
 import type { CustomersState } from "../src/customers/CustomerState.js";
 import { createNotification } from "../src/notifications/Notification.js";
 import { telegramReplyMarkup } from "../src/notifications/TelegramNotifier.js";
+import {
+  TELEGRAM_BOOKED_BUTTON_TEXT,
+  TELEGRAM_KEEP_LOOKING_BUTTON_TEXT
+} from "../src/notifications/TelegramAppointmentFeedback.js";
 
 const now = new Date("2026-08-07T10:00:00.000Z");
 const customers: CustomerConfig[] = [
@@ -213,8 +217,8 @@ describe("multi-customer evaluation", () => {
     expect(context.deliveries[0]?.notification.message).toContain("Did you manage to book it?");
     expect(telegramReplyMarkup(createNotification(context.deliveries[0]!.notification))).toEqual({
       inline_keyboard: [[
-        { text: "✅ I booked it", callback_data: expect.stringMatching(/^b:[a-f0-9]{8}:[a-f0-9]{8}$/) },
-        { text: "❌ Keep looking", callback_data: expect.stringMatching(/^n:[a-f0-9]{8}:[a-f0-9]{8}$/) }
+        { text: TELEGRAM_BOOKED_BUTTON_TEXT, callback_data: expect.stringMatching(/^b:[a-f0-9]{8}:[a-f0-9]{8}$/) },
+        { text: TELEGRAM_KEEP_LOOKING_BUTTON_TEXT, callback_data: expect.stringMatching(/^n:[a-f0-9]{8}:[a-f0-9]{8}$/) }
       ]]
     });
   });
