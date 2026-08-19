@@ -158,10 +158,21 @@ export async function evaluateCustomers(options: {
     let alertId: string | undefined;
     if (shouldSend) {
       notificationsAttempted += 1;
+      const earliest = matchingAvailability.find(
+        item => item.date === matchingDates[0]
+      );
+
       alertId = createAlertId();
+
       try {
         await sender.send(buildCustomerAppointmentAlert({
-          customer, matchingDates, now, timezone, isSimulation, alertId
+          customer,
+          matchingDates,
+          now,
+          timezone,
+          isSimulation,
+          alertId,
+          location: earliest?.location
         }), customer.chatId);
         notificationsSent += 1;
         sent = true;
