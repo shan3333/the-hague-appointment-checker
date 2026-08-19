@@ -42,7 +42,7 @@ export function formatTelegramMessage(notification: Notification): string {
 export function telegramReplyMarkup(notification: Notification): object | undefined {
   const customerKey = notification.metadata.telegramCustomerKey;
   const alertId = notification.metadata.alertId;
-  if (notification.isSimulation || typeof customerKey !== "string" || typeof alertId !== "string") return undefined;
+  if (typeof customerKey !== "string" || typeof alertId !== "string") return undefined;
   return {
     inline_keyboard: [[
       { text: "✅ I booked it", callback_data: `b:${customerKey}:${alertId}` },

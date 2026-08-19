@@ -11,6 +11,7 @@ import { TEST_NOTIFICATION_CUSTOMER_ID, testNotificationCustomer } from "../src/
 import { telegramCustomerKey } from "../src/customers/CustomerAlertIdentity.js";
 import { resolveCallbackTarget } from "../src/telegram-listener.js";
 import { config } from "../src/config.js";
+import { buildStandaloneAppointmentAlert, prepareStandaloneAppointmentAlertState } from "../src/standalone-appointment-alert.js";
 
 describe("standalone production-style appointment notification", () => {
   const now = new Date("2026-08-17T10:00:00.000Z");
@@ -39,6 +40,31 @@ describe("standalone production-style appointment notification", () => {
       expect.stringMatching(/^b:[a-f0-9]{8}:a42abcde$/),
       expect.stringMatching(/^n:[a-f0-9]{8}:a42abcde$/)
     ]);
+  });
+
+  it("gives check:simulate AVAILABLE alerts both processable feedback buttons", async () => {
+    const draft = buildStandaloneAppointmentAlert({
+      matchingDates: ["2026-08-20"],
+      now,
+      timezone: "Europe/Amsterdam",
+      chatId: "simulation-chat",
+      isSimulation: true,
+      filter: "NONE",
+      alertId
+    });
+    const directory = await mkdtemp(path.join(os.tmpdir(), "check-simulate-alert-"));
+    const statePath = path.join(directory, "test-notification-state.json");
+    await prepareStandaloneAppointmentAlertState(statePath, draft);
+
+    const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await new TelegramNotifier("token", "simulation-chat", 1000, fetchFn).notify(createNotification(draft));
+    const body = JSON.parse(String((fetchFn.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body.reply_markup.inline_keyboard[0]).toEqual([
+      { text: "✅ I booked it", callback_data: `b:${telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID)}:${alertId}` },
+      { text: "❌ Keep looking", callback_data: `n:${telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID)}:${alertId}` }
+    ]);
+    expect(JSON.parse(await readFile(statePath, "utf8")).customers[TEST_NOTIFICATION_CUSTOMER_ID].alerts)
+      .toEqual([expect.objectContaining({ alertId, response: null })]);
   });
 
   it("does not modify real customer state when sending", async () => {

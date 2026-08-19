@@ -6,7 +6,7 @@ import type { CustomerConfig } from "../src/customers/CustomerConfig.js";
 import { groupActiveCustomersByService } from "../src/customers/CustomerServiceGroups.js";
 import { saveCustomersState, updateCustomersState, type CustomersState } from "../src/customers/CustomerState.js";
 import { telegramCustomerKey } from "../src/customers/CustomerAlertIdentity.js";
-import { handleTelegramCallback } from "../src/telegram-listener.js";
+import { handleTelegramCallback, selectCustomerCallbackMode } from "../src/telegram-listener.js";
 
 const customer: CustomerConfig = {
   id: "customer-001", service: "brp_existing_bsn", chatId: "12345", enabled: true,
@@ -35,6 +35,14 @@ function setup(status: "active" | "booked" | "stopped" | "expired" = "active") {
 }
 
 describe("Telegram customer feedback", () => {
+  it("routes simulated customer callbacks to simulation state", () => {
+    expect(selectCustomerCallbackMode(
+      telegramCustomerKey("simulation-customer"),
+      [{ id: "real-customer" }],
+      [{ id: "simulation-customer" }]
+    )).toBe("simulation");
+  });
+
   it("marks an active customer booked and removes them from monitoring", async () => {
     const context = setup();
     expect(await context.run("b")).toBe("booked");

@@ -6,6 +6,7 @@ import { logger } from "./logger.js";
 import { pathToFileURL } from "node:url";
 import { TEST_NOTIFICATION_CUSTOMER_ID, testNotificationCustomer } from "./test-notification-customer.js";
 import { markCustomerBooked } from "./customers/CustomerStatusTransitions.js";
+import { access } from "node:fs/promises";
 
 export const BOOKED_CONFIRMATION_MESSAGE = "Great, glad you managed to book an appointment! 🎉 Monitoring has now been stopped.";
 
@@ -26,6 +27,17 @@ export interface CallbackLog {
 }
 
 export type CallbackHandlingResult = "booked" | "keep-looking" | "inactive" | "unauthorized" | "malformed" | "unknown";
+
+export function selectCustomerCallbackMode(
+  customerKey: string | undefined,
+  realCustomers: readonly { id: string }[],
+  simulationCustomers: readonly { id: string }[]
+): "real" | "simulation" | undefined {
+  const matchesKey = (customer: { id: string }) => telegramCustomerKey(customer.id) === customerKey;
+  if (realCustomers.some(matchesKey)) return "real";
+  if (simulationCustomers.some(matchesKey)) return "simulation";
+  return undefined;
+}
 
 async function telegramCall(call: () => Promise<void>, log: CallbackLog): Promise<void> {
   try {
@@ -116,9 +128,31 @@ export async function resolveCallbackTarget(data: string | undefined): Promise<{
 }> {
   const parsed = parseCallbackData(data);
   const isTestNotification = parsed?.customerKey === telegramCustomerKey(TEST_NOTIFICATION_CUSTOMER_ID);
-  return isTestNotification
-    ? { customers: [testNotificationCustomer(config.telegramChatId)], statePath: config.testNotificationStatePath }
-    : { customers: await loadCustomers(config.customersConfigPaths.real), statePath: config.customerStatePath };
+  if (isTestNotification) {
+    return { customers: [testNotificationCustomer(config.telegramChatId)], statePath: config.testNotificationStatePath };
+  }
+
+  const loadIfPresent = async (file: string) => {
+    try {
+      await access(file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    return loadCustomers(file);
+  };
+  const [realCustomers, simulationCustomers] = await Promise.all([
+    loadIfPresent(config.customersConfigPaths.real),
+    loadIfPresent(config.customersConfigPaths.simulation)
+  ]);
+  const callbackMode = selectCustomerCallbackMode(parsed?.customerKey, realCustomers, simulationCustomers);
+  if (callbackMode === "real") {
+    return { customers: realCustomers, statePath: config.customerStatePath };
+  }
+  if (callbackMode === "simulation") {
+    return { customers: simulationCustomers, statePath: config.simulationCustomerStatePath };
+  }
+  return { customers: realCustomers, statePath: config.customerStatePath };
 }
 
 class TelegramLongPollingApi implements TelegramCallbackApi {

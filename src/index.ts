@@ -33,6 +33,7 @@ import { logMonitoringRoundComplete, runWithReloadedCustomers } from "./customer
 import { forEachActiveServiceGroup, groupActiveCustomersByService } from "./customers/CustomerServiceGroups.js";
 import { getAppointmentService } from "./appointmentServices.js";
 import type { CustomerEvaluationSummary } from "./customers/CustomerMonitor.js";
+import { buildStandaloneAppointmentAlert, prepareStandaloneAppointmentAlertState } from "./standalone-appointment-alert.js";
 
 const action = process.argv[2] ?? "check";
 
@@ -189,23 +190,34 @@ async function performLoadedCheck(cycleCustomers?: readonly CustomerConfig[]): P
         ? ` Earliest matching appointment: ${evaluation.matchingDates[0]}. Filter: ${describeDateFilter(dateFilter)}.`
         : "";
       const isSimulation = runtimeMode.kind === "simulation";
-      const dispatch = await notificationService.notify({
-        title: isSimulation
-          ? "🧪 Simulation: The Hague Appointment Available"
-          : "The Hague Appointment Checker",
-        message: isSimulation
-          ? `This is a simulated appointment notification. No real appointment website was checked. No booking was attempted. A possible appointment is available.${matchingDetails} Booking URL is included for reference only.`
-          : `A possible appointment is available.${matchingDetails} Open the website now.`,
-        isSimulation,
-        url: config.url,
-        timestamp: now,
-        metadata: {
-          ...(evaluation.matchingDates[0] ? { earliestMatchingDate: evaluation.matchingDates[0] } : {}),
-          matchingAppointmentCount: evaluation.matchingDates.length,
-          filter: describeDateFilter(dateFilter),
-          timezone: config.timezone
-        }
-      });
+      const draft: NotificationDraft = isSimulation
+        ? buildStandaloneAppointmentAlert({
+            matchingDates: evaluation.matchingDates.length > 0
+              ? evaluation.matchingDates
+              : evaluation.availableDates,
+            now,
+            timezone: config.timezone,
+            chatId: config.telegramChatId,
+            isSimulation: true,
+            filter: describeDateFilter(dateFilter)
+          })
+        : {
+            title: "The Hague Appointment Checker",
+            message: `A possible appointment is available.${matchingDetails} Open the website now.`,
+            isSimulation: false,
+            url: config.url,
+            timestamp: now,
+            metadata: {
+              ...(evaluation.matchingDates[0] ? { earliestMatchingDate: evaluation.matchingDates[0] } : {}),
+              matchingAppointmentCount: evaluation.matchingDates.length,
+              filter: describeDateFilter(dateFilter),
+              timezone: config.timezone
+            }
+          };
+      if (isSimulation && config.telegram.enabled) {
+        await prepareStandaloneAppointmentAlertState(config.testNotificationStatePath, draft);
+      }
+      const dispatch = await notificationService.notify(draft);
       notificationSent = dispatch.deliveries.some(delivery => delivery.success);
       notificationResult = dispatch.deliveries.every(delivery => delivery.success) ? "success" : "failure";
       for (const delivery of dispatch.deliveries.filter(delivery => delivery.success)) {

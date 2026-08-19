@@ -8,6 +8,8 @@ import {
 } from "../src/customers/CustomerMonitor.js";
 import type { CustomerConfig } from "../src/customers/CustomerConfig.js";
 import type { CustomersState } from "../src/customers/CustomerState.js";
+import { createNotification } from "../src/notifications/Notification.js";
+import { telegramReplyMarkup } from "../src/notifications/TelegramNotifier.js";
 
 const now = new Date("2026-08-07T10:00:00.000Z");
 const customers: CustomerConfig[] = [
@@ -208,6 +210,13 @@ describe("multi-customer evaluation", () => {
     await evaluateCustomers(context.options);
     expect(context.deliveries[0]?.notification).toMatchObject({ isSimulation: true });
     expect(context.deliveries[0]?.notification.message).toContain("No real appointment website was checked");
+    expect(context.deliveries[0]?.notification.message).toContain("Did you manage to book it?");
+    expect(telegramReplyMarkup(createNotification(context.deliveries[0]!.notification))).toEqual({
+      inline_keyboard: [[
+        { text: "✅ I booked it", callback_data: expect.stringMatching(/^b:[a-f0-9]{8}:[a-f0-9]{8}$/) },
+        { text: "❌ Keep looking", callback_data: expect.stringMatching(/^n:[a-f0-9]{8}:[a-f0-9]{8}$/) }
+      ]]
+    });
   });
 
   it("logs NONE consistently when no dates match", async () => {
