@@ -1,6 +1,6 @@
 {
   "name": "the-hague-appointment-checker",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "A local Playwright checker for possible appointment availability in The Hague.",
   "license": "MIT",
   "type": "module",
